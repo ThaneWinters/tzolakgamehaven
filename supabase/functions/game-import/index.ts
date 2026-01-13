@@ -164,30 +164,32 @@ Deno.serve(async (req) => {
     const imageRegex = /https?:\/\/cf\.geekdo-images\.com[^\s"'<>]+/g;
     const allImageMatches = rawHtml.match(imageRegex) || [];
     
-    // Deduplicate and filter - only keep box art and official game images
+    // Deduplicate images
     const uniqueImages = [...new Set(allImageMatches)] as string[];
     
-    // Strict filtering - only keep high quality official images
+    // Filter out tiny thumbnails but allow various quality levels
     const filteredImages = uniqueImages.filter((img) => {
-      // Exclude tiny thumbnails
-      const isTiny = /crop100|square30|100x100|150x150|_thumb/i.test(img);
-      // Only keep itemrep (box art) or imagepage (official photos)
-      const isOfficialImage = /_itemrep|_imagepage/i.test(img);
-      return !isTiny && isOfficialImage;
+      // Exclude tiny thumbnails and avatars
+      const isTiny = /crop100|square30|100x100|150x150|_thumb|_avatar|_micro/i.test(img);
+      return !isTiny;
     });
     
-    // Prioritize box art (_itemrep) first
+    // Prioritize box art (_itemrep) first, then large images (_imagepage), then others
     const sortedImageLinks = filteredImages.sort((a, b) => {
-      const aIsBoxArt = /_itemrep/i.test(a) ? 0 : 1;
-      const bIsBoxArt = /_itemrep/i.test(b) ? 0 : 1;
-      return aIsBoxArt - bIsBoxArt;
+      const getPriority = (url: string) => {
+        if (/_itemrep/i.test(url)) return 0; // Box art - highest priority
+        if (/_imagepage/i.test(url)) return 1; // Full-size photos
+        if (/_original/i.test(url)) return 2; // Original uploads
+        return 3; // Other images
+      };
+      return getPriority(a) - getPriority(b);
     });
     
-    // Limit to max 5 images total (box art + a few official photos)
-    const limitedImages = sortedImageLinks.slice(0, 5);
+    // Take only the first image (box art preferred) for simplicity
+    const mainImage = sortedImageLinks[0] || null;
 
-    console.log("Found image links:", limitedImages.length);
-    console.log("Images:", limitedImages);
+    console.log("Found image links:", sortedImageLinks.length);
+    console.log("Main image:", mainImage);
 
     // Guardrail: ensure the scraped content actually matches the requested BGG game page
     // (BGG sometimes serves "hotness"/generic content when blocked).
@@ -281,7 +283,7 @@ IMPORTANT RULES:
 TARGET PAGE (must match): ${url}
 
 AVAILABLE BOX ART IMAGE (use ONLY this for main_image, leave gameplay_images empty):
-${limitedImages[0] || "No image found"}
+${mainImage || "No image found"}
 
 Page content:
 ${markdown.slice(0, 18000)}`,
