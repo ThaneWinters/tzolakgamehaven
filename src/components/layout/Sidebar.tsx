@@ -71,7 +71,7 @@ export function Sidebar({ isOpen }: SidebarProps) {
           <Link to="/" className="flex items-center gap-3">
             <Gamepad2 className="h-8 w-8 text-sidebar-primary" />
             <span className="font-display text-xl font-semibold text-sidebar-foreground">
-              Game Library
+              Sommerfeld Game Library
             </span>
           </Link>
         </div>
@@ -202,43 +202,33 @@ export function Sidebar({ isOpen }: SidebarProps) {
           </div>
         </ScrollArea>
 
-        {/* User Section */}
-        <div className="border-t border-sidebar-border p-4 space-y-2">
-          {isAuthenticated ? (
-            <>
-              <div className="flex items-center gap-2 px-4 py-2 text-sm text-sidebar-foreground/80">
-                <User className="h-4 w-4" />
-                <span className="truncate">{user?.email}</span>
-              </div>
-              <Link
-                to="/settings"
-                className={cn(
-                  "sidebar-link justify-center",
-                  location.pathname === "/settings" && "sidebar-link-active"
-                )}
-              >
-                <Settings className="h-5 w-5" />
-                <span>Settings</span>
-              </Link>
-              <Button
-                variant="ghost"
-                className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent"
-                onClick={handleSignOut}
-              >
-                <LogOut className="h-5 w-5" />
-                <span>Sign Out</span>
-              </Button>
-            </>
-          ) : (
+        {/* User Section - Only show when authenticated */}
+        {isAuthenticated && (
+          <div className="border-t border-sidebar-border p-4 space-y-2">
+            <div className="flex items-center gap-2 px-4 py-2 text-sm text-sidebar-foreground/80">
+              <User className="h-4 w-4" />
+              <span className="truncate">{user?.email}</span>
+            </div>
             <Link
-              to="/login"
-              className="sidebar-link justify-center bg-sidebar-accent"
+              to="/settings"
+              className={cn(
+                "sidebar-link justify-center",
+                location.pathname === "/settings" && "sidebar-link-active"
+              )}
             >
-              <LogIn className="h-5 w-5" />
-              <span>Sign In</span>
+              <Settings className="h-5 w-5" />
+              <span>Settings</span>
             </Link>
-          )}
-        </div>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent"
+              onClick={handleSignOut}
+            >
+              <LogOut className="h-5 w-5" />
+              <span>Sign Out</span>
+            </Button>
+          </div>
+        )}
       </div>
     </aside>
   );

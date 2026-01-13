@@ -80,7 +80,7 @@ const Login = () => {
         <CardHeader className="text-center">
           <Link to="/" className="flex items-center justify-center gap-2 mb-4">
             <Gamepad2 className="h-8 w-8 text-primary" />
-            <span className="font-display text-xl font-semibold">Game Library</span>
+            <span className="font-display text-xl font-semibold">Sommerfeld Game Library</span>
           </Link>
           <CardTitle className="font-display text-2xl">Admin Access</CardTitle>
           <CardDescription>

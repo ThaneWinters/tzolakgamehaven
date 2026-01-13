@@ -21,7 +21,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/game/:slug" element={<GameDetail />} />
-          <Route path="/login" element={<Login />} />
+          <Route path="/admin" element={<Login />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin/add" element={<GameForm />} />
           <Route path="/admin/edit/:id" element={<GameForm />} />
