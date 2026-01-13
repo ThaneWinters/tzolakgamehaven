@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   User, 
@@ -64,10 +64,21 @@ const Settings = () => {
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
-  // Redirect if not authenticated
-  if (!loading && !isAuthenticated) {
-    navigate("/login");
-    return null;
+  // Redirect if not authenticated (using useEffect to avoid render-time navigation)
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      navigate("/login");
+    }
+  }, [loading, isAuthenticated, navigate]);
+
+  if (loading || !isAuthenticated) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
   }
 
   const handleBGGImport = async (e: React.FormEvent) => {
@@ -193,15 +204,6 @@ const Settings = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </Layout>
-    );
-  }
 
   return (
     <Layout>
