@@ -503,11 +503,40 @@ ${markdown.slice(0, 18000)}`,
     }
 
     // Step 5: Create the game
-    // Validate that an image URL is actually accessible
-    const validateImageUrl = async (imageUrl: string): Promise<boolean> => {
+    // BGG/Geekdo image URLs sometimes include characters like parentheses in filters (e.g. no_upscale())
+    // which can cause HTTP 400 unless properly URL-encoded.
+    const sanitizeImageUrl = (imageUrl: string): string => {
       try {
-        const response = await fetch(imageUrl, { method: 'HEAD' });
-        return response.ok;
+        const u = new URL(imageUrl);
+        // Ensure special characters are encoded (notably parentheses)
+        u.pathname = u.pathname.replace(/\(/g, "%28").replace(/\)/g, "%29");
+        // Preserve already-encoded values; URL will normalize safely
+        return u.toString();
+      } catch {
+        return imageUrl
+          .replace(/\(/g, "%28")
+          .replace(/\)/g, "%29");
+      }
+    };
+
+    // Validate that an image URL is actually accessible
+    // NOTE: Some CDNs reject HEAD, so we do a tiny ranged GET.
+    const validateImageUrl = async (imageUrl: string): Promise<boolean> => {
+      const safeUrl = sanitizeImageUrl(imageUrl);
+      try {
+        const response = await fetch(safeUrl, {
+          method: "GET",
+          headers: {
+            "Accept": "image/*,*/*;q=0.8",
+            // Range keeps bandwidth tiny while still validating the resource
+            "Range": "bytes=0-0",
+            "User-Agent": "LovableGameImporter/1.0",
+          },
+          redirect: "follow",
+        });
+
+        // Some CDNs return 206 for ranged success
+        return response.status === 200 || response.status === 206;
       } catch {
         return false;
       }
@@ -516,45 +545,55 @@ ${markdown.slice(0, 18000)}`,
     // Filter and validate gameplay images
     const filterAndValidateImages = async (images: string[] | undefined): Promise<string[]> => {
       if (!images || !Array.isArray(images)) return [];
-      
+
       const filtered = images
+        .map((img) => sanitizeImageUrl(img))
         .filter((img: string) => {
-          if (!img || typeof img !== 'string') return false;
+          if (!img || typeof img !== "string") return false;
           // Exclude small thumbnails
-          const isThumbnail = /crop100|100x100|150x150|200x200|300x300|thumb/i.test(img);
-          return !isThumbnail;
+          const isThumbnail = /crop100|square30|100x100|150x150|200x200|300x300|thumb/i.test(img);
+          if (isThumbnail) return false;
+          // Exclude box-art-ish images as gameplay (keep those for main)
+          const looksLikeBox = /_itemrep/i.test(img);
+          return !looksLikeBox;
         })
-        .slice(0, 4); // Check up to 4 to get 2 valid ones
-      
-      // Validate each image URL
+        .slice(0, 8); // Check up to 8 to find 1-2 valid gameplay images
+
       const validatedImages: string[] = [];
       for (const img of filtered) {
         if (validatedImages.length >= 2) break; // Max 2 gameplay images
         const isValid = await validateImageUrl(img);
         if (isValid) {
-          console.log("Valid image:", img);
+          console.log("Valid gameplay image:", img);
           validatedImages.push(img);
         } else {
-          console.log("Invalid image (skipping):", img);
+          console.log("Invalid gameplay image (skipping):", img);
         }
       }
-      
+
       return validatedImages;
     };
 
     // Validate main image
-    const mainImage = extractedData.main_image || extractedData.image_url;
-    let validMainImage = null;
-    if (mainImage) {
-      const isValid = await validateImageUrl(mainImage);
+    const mainImageCandidateRaw = extractedData.main_image || extractedData.image_url;
+    const mainImageCandidate = mainImageCandidateRaw ? sanitizeImageUrl(mainImageCandidateRaw) : null;
+
+    let validMainImage: string | null = null;
+    if (mainImageCandidate) {
+      const isValid = await validateImageUrl(mainImageCandidate);
       if (isValid) {
-        validMainImage = mainImage;
+        validMainImage = mainImageCandidate;
       } else {
-        console.log("Main image invalid, will be null:", mainImage);
+        console.log("Main image invalid, will be null:", mainImageCandidate);
       }
     }
 
-    const validGameplayImages = await filterAndValidateImages(extractedData.gameplay_images || extractedData.additional_images);
+    // Validate gameplay images and ensure they aren't duplicates of the main image
+    const gameplayCandidates = extractedData.gameplay_images || extractedData.additional_images;
+    let validGameplayImages = await filterAndValidateImages(gameplayCandidates);
+    if (validMainImage) {
+      validGameplayImages = validGameplayImages.filter((u) => u !== validMainImage);
+    }
 
     const gameData = {
       title: extractedData.title.slice(0, 500),
