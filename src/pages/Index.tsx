@@ -23,22 +23,11 @@ const Index = () => {
 
   const filter = searchParams.get("filter");
   const filterValue = searchParams.get("value");
-  const searchQuery = searchParams.get("search");
   const sortBy = (searchParams.get("sort") as SortOption) || "title";
 
   // Filter games
   const filteredGames = useMemo(() => {
     let result = [...games];
-
-    // Search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (g) =>
-          g.title.toLowerCase().includes(query) ||
-          g.description?.toLowerCase().includes(query)
-      );
-    }
 
     // Category filters
     if (filter && filterValue) {
@@ -78,7 +67,7 @@ const Index = () => {
     });
 
     return result;
-  }, [games, filter, filterValue, searchQuery, sortBy]);
+  }, [games, filter, filterValue, sortBy]);
 
   const handleSortChange = (value: string) => {
     const newParams = new URLSearchParams(searchParams);
@@ -94,7 +83,7 @@ const Index = () => {
     setSearchParams({});
   };
 
-  const hasActiveFilters = filter || searchQuery;
+  const hasActiveFilters = !!filter;
 
   return (
     <Layout>
@@ -103,11 +92,7 @@ const Index = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="font-display text-3xl font-bold text-foreground">
-              {filter && filterValue
-                ? filterValue
-                : searchQuery
-                ? `Search: "${searchQuery}"`
-                : "Game Collection"}
+              {filter && filterValue ? filterValue : "Game Collection"}
             </h1>
             <p className="text-muted-foreground mt-1">
               {filteredGames.length} {filteredGames.length === 1 ? "game" : "games"} in collection
@@ -140,11 +125,6 @@ const Index = () => {
             {filter && filterValue && (
               <Badge variant="secondary" className="gap-1">
                 {filter}: {filterValue}
-              </Badge>
-            )}
-            {searchQuery && (
-              <Badge variant="secondary" className="gap-1">
-                search: {searchQuery}
               </Badge>
             )}
             <Button

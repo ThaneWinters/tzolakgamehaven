@@ -749,6 +749,45 @@ const Settings = () => {
           {/* Categories Tab (Admin Only) */}
           {isAdmin && (
             <TabsContent value="categories" className="space-y-6">
+              {/* Fixed Filter Groups Info */}
+              <Card className="card-elevated">
+                <CardHeader>
+                  <CardTitle className="font-display">Main Filter Categories</CardTitle>
+                  <CardDescription>
+                    These are the primary categories games are sorted/filtered by in the sidebar. These options are fixed.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-6 md:grid-cols-3">
+                    <div>
+                      <h4 className="font-medium mb-2">Difficulty</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {["1 - Light", "2 - Medium Light", "3 - Medium", "4 - Medium Heavy", "5 - Heavy"].map((d) => (
+                          <Badge key={d} variant="outline" className="text-xs">{d}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Type</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {["Board Game", "Card Game", "Dice Game", "Party Game", "War Game", "Miniatures", "RPG", "Other"].map((t) => (
+                          <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Play Time</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {["0-15 Minutes", "15-30 Minutes", "30-45 Minutes", "45-60 Minutes", "60+ Minutes", "2+ Hours", "3+ Hours"].map((p) => (
+                          <Badge key={p} variant="outline" className="text-xs">{p}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Editable Categories */}
               <div className="grid gap-6 lg:grid-cols-2">
                 {/* Mechanics Card */}
                 <Card className="card-elevated">
