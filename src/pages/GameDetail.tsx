@@ -169,6 +169,9 @@ const GameDetail = () => {
                   <img
                     src={allImages[selectedImageIndex]}
                     alt={game.title}
+                    loading="eager"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
                     className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
                   />
                   {/* Navigation arrows for multiple images */}
@@ -217,11 +220,14 @@ const GameDetail = () => {
                         : "border-border hover:border-primary/50"
                     }`}
                   >
-                    <img
-                      src={img}
-                      alt={`${game.title} - Image ${idx + 1}`}
-                      className="h-full w-full object-contain bg-muted"
-                    />
+                      <img
+                        src={img}
+                        alt={`${game.title} - Image ${idx + 1}`}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        className="h-full w-full object-contain bg-muted"
+                      />
                   </button>
                 ))}
               </div>
@@ -395,6 +401,9 @@ const GameDetail = () => {
                           <img
                             src={relatedGame.image_url}
                             alt={relatedGame.title}
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
                             className="h-full w-full object-contain bg-muted group-hover:scale-105 transition-transform duration-300"
                           />
                         ) : (

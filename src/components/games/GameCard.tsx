@@ -23,6 +23,9 @@ export function GameCard({ game }: GameCardProps) {
             <img
               src={game.image_url}
               alt={game.title}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
               className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
