@@ -10,10 +10,22 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { TurnstileWidget } from "./TurnstileWidget";
 
+// Enhanced email regex for stricter validation
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+// URL/link detection regex
+const URL_REGEX = /(?:https?:\/\/|www\.)[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?/gi;
+
 const contactSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100, "Name must be less than 100 characters"),
-  email: z.string().trim().email("Invalid email address").max(255, "Email must be less than 255 characters"),
-  message: z.string().trim().min(1, "Message is required").max(2000, "Message must be less than 2000 characters"),
+  email: z.string().trim()
+    .min(1, "Email is required")
+    .max(255, "Email must be less than 255 characters")
+    .refine((val) => EMAIL_REGEX.test(val), { message: "Please enter a valid email address" }),
+  message: z.string().trim()
+    .min(1, "Message is required")
+    .max(2000, "Message must be less than 2000 characters")
+    .refine((val) => !URL_REGEX.test(val), { message: "Links are not allowed in messages" }),
 });
 
 interface ContactSellerFormProps {

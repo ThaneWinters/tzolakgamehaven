@@ -45,8 +45,11 @@ async function verifyTurnstileToken(token: string, ip: string): Promise<boolean>
   }
 }
 
-// Email validation regex
-const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}$/i;
+// Enhanced email validation regex
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+// URL/link detection regex  
+const URL_REGEX = /(?:https?:\/\/|www\.)[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/[^\s]*)?/gi;
 
 serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight
@@ -106,6 +109,14 @@ serve(async (req: Request): Promise<Response> => {
     if (message.trim().length === 0 || message.length > 2000) {
       return new Response(
         JSON.stringify({ success: false, error: "Message must be between 1 and 2000 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Block links in messages
+    if (URL_REGEX.test(message)) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Links are not allowed in messages" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
