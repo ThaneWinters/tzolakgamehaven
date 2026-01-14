@@ -35,6 +35,43 @@ const GameDetail = () => {
     setBrokenImageUrls([]);
   }, [game?.id]);
 
+  // Get related games and shuffle them for variety - must be before early returns
+  const relatedGames = useMemo(() => {
+    if (!allGames || !game) return [];
+    
+    const candidates = allGames
+      .filter((g) => g.id !== game.id && !g.is_expansion)
+      .filter((g) => {
+        const sameMechanic = g.mechanics?.some((m) =>
+          game.mechanics.some((gm) => gm.id === m.id)
+        );
+        const sameType = g.game_type === game.game_type;
+        return sameMechanic || sameType;
+      });
+    
+    // Fisher-Yates shuffle with a seed based on game.id + current date (changes daily)
+    const today = new Date().toDateString();
+    const seedString = `${game.id}-${today}`;
+    let seed = 0;
+    for (let i = 0; i < seedString.length; i++) {
+      seed = ((seed << 5) - seed) + seedString.charCodeAt(i);
+      seed = seed & seed;
+    }
+    
+    const seededRandom = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    
+    const shuffled = [...candidates];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(seededRandom() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    
+    return shuffled.slice(0, 6);
+  }, [allGames, game]);
+
   if (isLoading) {
     return (
       <Layout>
@@ -139,42 +176,6 @@ const GameDetail = () => {
   // Get expansions for this game from allGames (since useGame doesn't include expansion grouping)
   const currentGameWithExpansions = allGames?.find((g) => g.id === game.id);
   const expansions = currentGameWithExpansions?.expansions || [];
-  // Get related games and shuffle them for variety
-  const relatedGames = useMemo(() => {
-    if (!allGames) return [];
-    
-    const candidates = allGames
-      .filter((g) => g.id !== game.id && !g.is_expansion)
-      .filter((g) => {
-        const sameMechanic = g.mechanics?.some((m) =>
-          game.mechanics.some((gm) => gm.id === m.id)
-        );
-        const sameType = g.game_type === game.game_type;
-        return sameMechanic || sameType;
-      });
-    
-    // Fisher-Yates shuffle with a seed based on game.id + current date (changes daily)
-    const today = new Date().toDateString();
-    const seedString = `${game.id}-${today}`;
-    let seed = 0;
-    for (let i = 0; i < seedString.length; i++) {
-      seed = ((seed << 5) - seed) + seedString.charCodeAt(i);
-      seed = seed & seed;
-    }
-    
-    const seededRandom = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
-    
-    const shuffled = [...candidates];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(seededRandom() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    
-    return shuffled.slice(0, 6);
-  }, [allGames, game.id, game.mechanics, game.game_type]);
 
   // Render markdown description with proper styling
   const DescriptionContent = ({ content }: { content: string | null }) => {
