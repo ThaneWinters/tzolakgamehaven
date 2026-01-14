@@ -53,13 +53,9 @@ export type Database = {
           game_id: string
           id: string
           is_read: boolean
-          message: string
           message_encrypted: string | null
-          sender_email: string
           sender_email_encrypted: string | null
-          sender_ip: string | null
           sender_ip_encrypted: string | null
-          sender_name: string
           sender_name_encrypted: string | null
         }
         Insert: {
@@ -67,13 +63,9 @@ export type Database = {
           game_id: string
           id?: string
           is_read?: boolean
-          message: string
           message_encrypted?: string | null
-          sender_email: string
           sender_email_encrypted?: string | null
-          sender_ip?: string | null
           sender_ip_encrypted?: string | null
-          sender_name: string
           sender_name_encrypted?: string | null
         }
         Update: {
@@ -81,13 +73,9 @@ export type Database = {
           game_id?: string
           id?: string
           is_read?: boolean
-          message?: string
           message_encrypted?: string | null
-          sender_email?: string
           sender_email_encrypted?: string | null
-          sender_ip?: string | null
           sender_ip_encrypted?: string | null
-          sender_name?: string
           sender_name_encrypted?: string | null
         }
         Relationships: [
