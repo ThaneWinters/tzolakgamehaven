@@ -24,15 +24,31 @@ import { formatDistanceToNow } from "date-fns";
 
 const Messages = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, isAdmin, loading: authLoading } = useAuth();
+  const { isAuthenticated, isAdmin, roleLoading, loading: authLoading } = useAuth();
   const { data: messages = [], isLoading } = useMessages();
   const markRead = useMarkMessageRead();
   const deleteMessage = useDeleteMessage();
   const { toast } = useToast();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Redirect if not authenticated or not admin - use Navigate component
-  if (!authLoading && (!isAuthenticated || !isAdmin)) {
+  // While auth/role is resolving, show loading UI (prevents redirect flicker on first load)
+  if (authLoading || roleLoading) {
+    return (
+      <Layout>
+        <div className="max-w-4xl mx-auto">
+          <Skeleton className="h-8 w-32 mb-6" />
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-32 w-full" />
+            ))}
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Redirect if not authenticated or not admin
+  if (!isAuthenticated || !isAdmin) {
     return <Navigate to="/admin" replace />;
   }
 

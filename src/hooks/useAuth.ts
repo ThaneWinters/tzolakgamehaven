@@ -7,6 +7,7 @@ export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [roleLoading, setRoleLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -85,13 +86,16 @@ export function useAuth() {
 
       if (!nextSession?.user) {
         setIsAdmin(false);
+        setRoleLoading(false);
         return;
       }
 
       // Fetch role in background; do not block rendering.
+      setRoleLoading(true);
       fetchIsAdmin(nextSession.user.id, (nextSession as any)?.access_token).then((nextIsAdmin) => {
         if (!mounted) return;
         setIsAdmin(nextIsAdmin);
+        setRoleLoading(false);
       });
     };
 
@@ -140,6 +144,8 @@ export function useAuth() {
     const watchdog = setTimeout(() => {
       if (!mounted) return;
       setLoading(false);
+      // If role check is still pending after a long stall, stop blocking UI.
+      setRoleLoading(false);
     }, 2000);
 
 
@@ -278,5 +284,6 @@ export function useAuth() {
     signOut,
     isAuthenticated: !!user,
     isAdmin,
+    roleLoading,
   };
 }
