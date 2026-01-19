@@ -29,9 +29,25 @@ export function useSiteSettings() {
   return useQuery({
     queryKey: ["site-settings"],
     queryFn: async (): Promise<SiteSettings> => {
-      const { data, error } = await supabase
+      // Try admin access first (full table), fallback to public view
+      let data, error;
+      
+      // First try the full table (admins only)
+      const adminResult = await supabase
         .from("site_settings")
         .select("key, value");
+      
+      if (adminResult.error || !adminResult.data?.length) {
+        // Fallback to public view for non-admins
+        const publicResult = await supabase
+          .from("site_settings_public")
+          .select("key, value");
+        data = publicResult.data;
+        error = publicResult.error;
+      } else {
+        data = adminResult.data;
+        error = adminResult.error;
+      }
 
       if (error) throw error;
 
