@@ -266,18 +266,20 @@ const DemoSettings = () => {
   const [importCrowdfunded, setImportCrowdfunded] = useState(false);
 
   // Demo mechanics and publishers derived from games
+  // Dedupe by name since imported games may have different IDs for the same mechanic
   const mechanics = useMemo(() => {
     const mechMap = new Map<string, { id: string; name: string }>();
     demoGames.forEach(g => {
-      g.mechanics.forEach(m => mechMap.set(m.id, m));
+      g.mechanics.forEach(m => mechMap.set(m.name, m));
     });
     return Array.from(mechMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [demoGames]);
 
+  // Dedupe by name since imported games may have different IDs for the same publisher
   const publishers = useMemo(() => {
     const pubMap = new Map<string, { id: string; name: string }>();
     demoGames.forEach(g => {
-      if (g.publisher) pubMap.set(g.publisher.id, g.publisher);
+      if (g.publisher) pubMap.set(g.publisher.name, g.publisher);
     });
     return Array.from(pubMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [demoGames]);
