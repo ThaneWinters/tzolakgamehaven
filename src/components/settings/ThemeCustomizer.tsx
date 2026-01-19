@@ -43,6 +43,26 @@ const DEFAULT_THEME: ThemeSettings = {
   theme_font_body: "IM Fell English",
 };
 
+// Validation helpers to prevent CSS injection
+const validateHue = (value: number): number => {
+  const num = Math.round(value);
+  if (isNaN(num) || num < 0) return 0;
+  if (num > 360) return 360;
+  return num;
+};
+
+const validatePercent = (value: number): number => {
+  const num = Math.round(value);
+  if (isNaN(num) || num < 0) return 0;
+  if (num > 100) return 100;
+  return num;
+};
+
+// Sanitize string input - only allow alphanumeric, spaces, and basic punctuation
+const sanitizeStringValue = (value: string): string => {
+  return value.replace(/[^a-zA-Z0-9\s\-_.]/g, '').slice(0, 100);
+};
+
 const DISPLAY_FONTS = [
   { value: "MedievalSharp", label: "MedievalSharp (Medieval)" },
   { value: "Cinzel", label: "Cinzel (Elegant)" },
@@ -159,9 +179,11 @@ export function ThemeCustomizer() {
   };
 
   const updateColor = (prefix: "primary" | "accent" | "background", component: "h" | "s" | "l", value: number) => {
+    // Validate input to prevent CSS injection
+    const validatedValue = component === "h" ? validateHue(value) : validatePercent(value);
     setTheme((prev) => ({
       ...prev,
-      [`theme_${prefix}_${component}`]: String(value),
+      [`theme_${prefix}_${component}`]: String(validatedValue),
     }));
   };
 
