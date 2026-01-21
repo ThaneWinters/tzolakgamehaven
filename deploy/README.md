@@ -1,57 +1,101 @@
-# Game Haven - Cloudron Deployment
+# Game Haven - Deployment
 
-One-click deployment to Cloudron.
+This directory contains deployment configurations for different hosting options.
 
-## Quick Start
+## Deployment Options
+
+| Option | Best For | Includes Database? |
+|--------|----------|-------------------|
+| **[Standalone](./standalone/)** | Full self-hosting on any Linux server | ✅ Yes - complete stack |
+| **[Cloudron](./cloudron/)** | Cloudron platform users | ❌ No - connect external |
+| **[Self-Hosting Guide](./SELF-HOSTING.md)** | Manual setup with external Supabase | ❌ No - connect external |
+
+---
+
+## Quick Start - Standalone (Recommended)
+
+The standalone deployment includes everything: the app, PostgreSQL, authentication, and API gateway.
 
 ```bash
+cd deploy/standalone
+
+# Run interactive installer
+chmod +x install.sh
+./install.sh
+
+# Start the stack
+docker compose up -d
+
+# Create admin user
+./scripts/create-admin.sh
+```
+
+The installer lets you customize:
+- **Site name, description, author**
+- **Domain and ports**
+- **Feature flags** (Play Logs, Wishlist, For Sale, Messaging, etc.)
+- **Email/SMTP settings**
+- **Admin Studio** (optional database UI)
+
+See [standalone/README.md](./standalone/README.md) for full documentation.
+
+---
+
+## Quick Start - Cloudron
+
+For Cloudron users who want to connect to an external Supabase instance:
+
+```bash
+# Build and push to your registry
+docker build -t registry.yourdomain.com/gamehaven:1.0.0 -f deploy/cloudron/Dockerfile ../..
+docker push registry.yourdomain.com/gamehaven:1.0.0
+
+# Install on Cloudron
 cd deploy/cloudron
-docker build -t your-registry/gamehaven:latest -f Dockerfile ../..
-docker push your-registry/gamehaven:latest
-cloudron install
+cloudron install --image registry.yourdomain.com/gamehaven:1.0.0
 ```
 
-## Environment Variables
+Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in Cloudron environment variables.
 
-Set these in Cloudron dashboard after installation:
+See [cloudron/README.md](./cloudron/README.md) for details.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SUPABASE_URL` | ✅ | Your Supabase project URL |
-| `SUPABASE_ANON_KEY` | ✅ | Supabase anonymous/public key |
-| `SITE_NAME` | ❌ | Site title (default: "Game Haven") |
-| `SITE_DESCRIPTION` | ❌ | Site description |
-| `FEATURE_PLAY_LOGS` | ❌ | Enable play logging (default: true) |
-| `FEATURE_WISHLIST` | ❌ | Enable wishlists (default: true) |
-| `FEATURE_FOR_SALE` | ❌ | Enable for-sale listings (default: true) |
-| `FEATURE_MESSAGING` | ❌ | Enable messaging (default: true) |
-| `FEATURE_DEMO_MODE` | ❌ | Enable demo mode (default: false) |
+---
 
-## Getting Supabase Credentials
+## Architecture
 
-1. Go to [supabase.com](https://supabase.com) and create a free project
-2. Navigate to Settings → API
-3. Copy the **Project URL** → `SUPABASE_URL`
-4. Copy the **anon/public key** → `SUPABASE_ANON_KEY`
-
-## Database Setup
-
-Run the SQL migrations from `supabase/migrations/` in your Supabase SQL editor.
-
-## Health Check
-
-```bash
-curl https://your-app.cloudron.domain/health
-# {"status":"healthy"}
-```
-
-## Files
+### Standalone (All-in-One)
 
 ```
-deploy/cloudron/
-├── Dockerfile           # Build image
-├── CloudronManifest.json # Cloudron app config
-├── nginx.conf           # Web server config
-├── start.sh             # Runtime config injection
-└── logo.png             # App icon (add your own)
+┌─────────────────────────────────────────────────────────────┐
+│                     Your Linux Server                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ Game Haven  │  │    Kong     │  │      PostgreSQL     │  │
+│  │  Frontend   │──│  API Gateway│──│   + Auth + REST     │  │
+│  │   :3000     │  │    :8000    │  │   + Realtime        │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Cloudron + External Database
+
+```
+┌─────────────────────┐      ┌─────────────────────┐
+│   Cloudron Server   │      │  Supabase Cloud or  │
+│   (Game Haven UI)   │─────▶│  Self-hosted Supa.  │
+│   games.domain.com  │      │   db.domain.com     │
+└─────────────────────┘      └─────────────────────┘
+```
+
+---
+
+## Requirements
+
+### Standalone
+- Docker 20.10+
+- Docker Compose 2.0+
+- 4GB RAM minimum (8GB recommended)
+- 20GB disk space
+
+### Cloudron
+- Cloudron server
+- External Supabase project (cloud or self-hosted)

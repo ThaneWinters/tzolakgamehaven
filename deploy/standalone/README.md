@@ -1,0 +1,221 @@
+# Game Haven - Standalone Self-Hosted Deployment
+
+Complete self-hosted package including the Game Haven app and full Supabase stack.
+
+## Quick Start
+
+```bash
+# 1. Run the interactive installer
+chmod +x install.sh
+./install.sh
+
+# 2. Start everything
+docker compose up -d
+
+# 3. Wait for services (~30 seconds)
+docker compose logs -f
+
+# 4. Create your admin user
+chmod +x scripts/create-admin.sh
+./scripts/create-admin.sh
+
+# 5. Access your site
+open http://localhost:3000
+```
+
+## What's Included
+
+| Service | Description | Default Port |
+|---------|-------------|--------------|
+| **Game Haven** | Frontend application | 3000 |
+| **PostgreSQL** | Database | 5432 |
+| **GoTrue** | Authentication service | - |
+| **PostgREST** | REST API | - |
+| **Kong** | API Gateway | 8000 |
+| **Realtime** | WebSocket subscriptions | - |
+| **Studio** | Database admin UI (optional) | 3001 |
+
+## Installation Options
+
+### Interactive Install (Recommended)
+
+```bash
+./install.sh
+```
+
+The wizard will prompt for:
+- Site name and description
+- Domain and ports
+- Feature toggles
+- Email/SMTP configuration
+- Admin Studio preference
+
+### Manual Configuration
+
+Copy the example environment file and edit:
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+## Features
+
+Toggle features on/off via environment variables:
+
+| Feature | Variable | Default |
+|---------|----------|---------|
+| Play Logs | `FEATURE_PLAY_LOGS` | true |
+| Wishlist | `FEATURE_WISHLIST` | true |
+| For Sale | `FEATURE_FOR_SALE` | true |
+| Messaging | `FEATURE_MESSAGING` | true |
+| Coming Soon | `FEATURE_COMING_SOON` | true |
+| Demo Mode | `FEATURE_DEMO_MODE` | false |
+
+## Administration
+
+### Create Admin User
+
+```bash
+./scripts/create-admin.sh
+```
+
+### Access Supabase Studio
+
+If enabled during install, access at `http://localhost:3001`
+
+### Backup Database
+
+```bash
+./scripts/backup.sh
+```
+
+Backups are saved to `./backups/` and compressed automatically.
+
+### Restore Database
+
+```bash
+./scripts/restore.sh ./backups/gamehaven_20240101_120000.sql.gz
+```
+
+## Production Deployment
+
+### With SSL (Recommended)
+
+1. Point your domain to your server
+2. Use a reverse proxy (Nginx, Traefik, Caddy) with SSL
+3. Update `.env` with your domain:
+   ```
+   SITE_URL=https://yourdomain.com
+   API_EXTERNAL_URL=https://api.yourdomain.com
+   ```
+
+### Example Nginx Config
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name yourdomain.com;
+    
+    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+    
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.yourdomain.com;
+    
+    ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem;
+    
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## Commands
+
+```bash
+# Start all services
+docker compose up -d
+
+# Stop all services
+docker compose down
+
+# View logs
+docker compose logs -f
+
+# View specific service logs
+docker compose logs -f gamehaven
+
+# Restart a service
+docker compose restart gamehaven
+
+# Update to latest version
+git pull
+docker compose build
+docker compose up -d
+```
+
+## Troubleshooting
+
+### Services not starting
+
+```bash
+# Check service health
+docker compose ps
+
+# Check specific logs
+docker compose logs db
+docker compose logs auth
+```
+
+### Database connection issues
+
+```bash
+# Verify database is ready
+docker exec gamehaven-db pg_isready
+
+# Check database logs
+docker compose logs db
+```
+
+### Reset everything
+
+```bash
+# Stop and remove all containers and volumes
+docker compose down -v
+
+# Re-run installer
+./install.sh
+docker compose up -d
+```
+
+## Requirements
+
+- Docker 20.10+
+- Docker Compose 2.0+
+- 4GB RAM minimum (8GB recommended)
+- 20GB disk space
+
+## Security Notes
+
+1. **Change default passwords** - The installer generates secure passwords automatically
+2. **Use HTTPS in production** - Configure SSL via reverse proxy
+3. **Backup regularly** - Use the provided backup script
+4. **Keep credentials secure** - The `.credentials` file contains sensitive data

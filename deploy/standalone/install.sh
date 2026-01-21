@@ -1,0 +1,306 @@
+#!/bin/bash
+#
+# Game Haven - Interactive Installer
+# Creates a customized .env file for your deployment
+#
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+# Defaults
+DEFAULT_SITE_NAME="Game Haven"
+DEFAULT_APP_PORT="3000"
+DEFAULT_STUDIO_PORT="3001"
+DEFAULT_POSTGRES_PORT="5432"
+DEFAULT_KONG_PORT="8000"
+
+echo ""
+echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║${NC}          ${BOLD}Game Haven - Self-Hosted Installation${NC}            ${CYAN}║${NC}"
+echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# Function to prompt with default
+prompt() {
+    local var_name=$1
+    local prompt_text=$2
+    local default_value=$3
+    local is_secret=${4:-false}
+    
+    if [ "$is_secret" = true ]; then
+        read -sp "$(echo -e "${BLUE}?${NC} $prompt_text ${YELLOW}[hidden]${NC}: ")" value
+        echo ""
+    else
+        read -p "$(echo -e "${BLUE}?${NC} $prompt_text ${YELLOW}[$default_value]${NC}: ")" value
+    fi
+    
+    eval "$var_name=\"${value:-$default_value}\""
+}
+
+# Function for yes/no with default
+prompt_yn() {
+    local var_name=$1
+    local prompt_text=$2
+    local default=${3:-y}
+    
+    if [ "$default" = "y" ]; then
+        options="Y/n"
+    else
+        options="y/N"
+    fi
+    
+    read -p "$(echo -e "${BLUE}?${NC} $prompt_text ${YELLOW}[$options]${NC}: ")" value
+    value=${value:-$default}
+    
+    if [[ "$value" =~ ^[Yy] ]]; then
+        eval "$var_name=true"
+    else
+        eval "$var_name=false"
+    fi
+}
+
+# Generate secure random string
+generate_secret() {
+    openssl rand -base64 ${1:-32} | tr -d '/+=' | head -c ${1:-32}
+}
+
+# Generate JWT (simplified - uses a secret, real JWT would need proper signing)
+generate_jwt_key() {
+    local role=$1
+    local secret=$2
+    # This is a simplified approach - in production, use proper JWT signing
+    echo "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6IiR7cm9sZX0iLCJpYXQiOjE2NDExNjk1MjAsImV4cCI6MTc5ODkzNTkyMH0.$(echo -n "demo-$role-key" | base64)"
+}
+
+echo -e "${BOLD}━━━ Site Configuration ━━━${NC}"
+echo ""
+
+prompt SITE_NAME "Site name" "$DEFAULT_SITE_NAME"
+prompt SITE_DESCRIPTION "Site description" "Browse and discover our collection of board games"
+prompt SITE_AUTHOR "Site author/owner name" "$SITE_NAME"
+
+echo ""
+echo -e "${BOLD}━━━ Domain & Ports ━━━${NC}"
+echo ""
+
+prompt DOMAIN "Domain (or localhost for local dev)" "localhost"
+prompt APP_PORT "Application port" "$DEFAULT_APP_PORT"
+prompt STUDIO_PORT "Admin Studio port (optional)" "$DEFAULT_STUDIO_PORT"
+prompt POSTGRES_PORT "PostgreSQL port" "$DEFAULT_POSTGRES_PORT"
+prompt KONG_PORT "API Gateway port" "$DEFAULT_KONG_PORT"
+
+# Build URLs
+if [ "$DOMAIN" = "localhost" ]; then
+    SITE_URL="http://localhost:$APP_PORT"
+    API_URL="http://localhost:$KONG_PORT"
+else
+    prompt_yn USE_HTTPS "Use HTTPS?" "y"
+    if [ "$USE_HTTPS" = true ]; then
+        SITE_URL="https://$DOMAIN"
+        API_URL="https://api.$DOMAIN"
+    else
+        SITE_URL="http://$DOMAIN:$APP_PORT"
+        API_URL="http://$DOMAIN:$KONG_PORT"
+    fi
+fi
+
+echo ""
+echo -e "${BOLD}━━━ Features ━━━${NC}"
+echo ""
+echo -e "${CYAN}Toggle features for your installation:${NC}"
+echo ""
+
+prompt_yn FEATURE_PLAY_LOGS "Enable Play Logs (track game sessions)?" "y"
+prompt_yn FEATURE_WISHLIST "Enable Wishlist (visitors can vote for games)?" "y"
+prompt_yn FEATURE_FOR_SALE "Enable For Sale section?" "y"
+prompt_yn FEATURE_MESSAGING "Enable Contact Seller messaging?" "y"
+prompt_yn FEATURE_COMING_SOON "Enable Coming Soon section?" "y"
+prompt_yn FEATURE_DEMO_MODE "Enable Demo Mode (uses mock data)?" "n"
+
+echo ""
+echo -e "${BOLD}━━━ Email Configuration (Optional) ━━━${NC}"
+echo ""
+echo -e "${CYAN}Configure SMTP for password reset and notifications.${NC}"
+echo -e "${CYAN}Leave blank to skip email configuration.${NC}"
+echo ""
+
+prompt SMTP_HOST "SMTP host" ""
+
+if [ -n "$SMTP_HOST" ]; then
+    prompt SMTP_PORT "SMTP port" "587"
+    prompt SMTP_USER "SMTP username" ""
+    prompt SMTP_PASS "SMTP password" "" true
+    prompt SMTP_FROM "From email address" "noreply@$DOMAIN"
+    MAILER_AUTOCONFIRM=false
+else
+    SMTP_PORT=""
+    SMTP_USER=""
+    SMTP_PASS=""
+    SMTP_FROM=""
+    MAILER_AUTOCONFIRM=true
+    echo -e "${YELLOW}Skipping email - users will be auto-confirmed.${NC}"
+fi
+
+echo ""
+echo -e "${BOLD}━━━ Admin Studio ━━━${NC}"
+echo ""
+
+prompt_yn ENABLE_STUDIO "Enable Supabase Studio (database admin UI)?" "y"
+
+echo ""
+echo -e "${BOLD}━━━ Generating Secrets ━━━${NC}"
+echo ""
+
+echo -e "${CYAN}Generating secure credentials...${NC}"
+
+POSTGRES_PASSWORD=$(generate_secret 32)
+JWT_SECRET=$(generate_secret 64)
+SECRET_KEY_BASE=$(generate_secret 64)
+ANON_KEY=$(generate_secret 32)
+SERVICE_ROLE_KEY=$(generate_secret 32)
+
+echo -e "${GREEN}✓${NC} Postgres password generated"
+echo -e "${GREEN}✓${NC} JWT secret generated"
+echo -e "${GREEN}✓${NC} API keys generated"
+
+# Create .env file
+echo ""
+echo -e "${BOLD}━━━ Creating Configuration ━━━${NC}"
+echo ""
+
+cat > .env << EOF
+# ============================================
+# Game Haven - Generated Configuration
+# Generated: $(date)
+# ============================================
+
+# ===================
+# Site Settings
+# ===================
+SITE_NAME=$SITE_NAME
+SITE_DESCRIPTION=$SITE_DESCRIPTION
+SITE_AUTHOR=$SITE_AUTHOR
+SITE_URL=$SITE_URL
+API_EXTERNAL_URL=$API_URL
+
+# ===================
+# Ports
+# ===================
+APP_PORT=$APP_PORT
+STUDIO_PORT=$STUDIO_PORT
+POSTGRES_PORT=$POSTGRES_PORT
+KONG_HTTP_PORT=$KONG_PORT
+
+# ===================
+# Features
+# ===================
+FEATURE_PLAY_LOGS=$FEATURE_PLAY_LOGS
+FEATURE_WISHLIST=$FEATURE_WISHLIST
+FEATURE_FOR_SALE=$FEATURE_FOR_SALE
+FEATURE_MESSAGING=$FEATURE_MESSAGING
+FEATURE_COMING_SOON=$FEATURE_COMING_SOON
+FEATURE_DEMO_MODE=$FEATURE_DEMO_MODE
+
+# ===================
+# Database
+# ===================
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+
+# ===================
+# Authentication
+# ===================
+JWT_SECRET=$JWT_SECRET
+ANON_KEY=$ANON_KEY
+SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
+SECRET_KEY_BASE=$SECRET_KEY_BASE
+MAILER_AUTOCONFIRM=$MAILER_AUTOCONFIRM
+DISABLE_SIGNUP=false
+
+# ===================
+# Email (SMTP)
+# ===================
+SMTP_HOST=$SMTP_HOST
+SMTP_PORT=$SMTP_PORT
+SMTP_USER=$SMTP_USER
+SMTP_PASS=$SMTP_PASS
+SMTP_ADMIN_EMAIL=$SMTP_FROM
+
+# ===================
+# Additional
+# ===================
+ADDITIONAL_REDIRECT_URLS=
+EOF
+
+echo -e "${GREEN}✓${NC} Created .env file"
+
+# Create docker-compose override for studio if enabled
+if [ "$ENABLE_STUDIO" = true ]; then
+    cat > docker-compose.override.yml << EOF
+# Enable Supabase Studio
+version: "3.8"
+services:
+  studio:
+    profiles: []
+  meta:
+    profiles: []
+EOF
+    echo -e "${GREEN}✓${NC} Enabled Supabase Studio"
+fi
+
+# Summary
+echo ""
+echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║${NC}               ${BOLD}${GREEN}Configuration Complete!${NC}                     ${CYAN}║${NC}"
+echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "${BOLD}Your Settings:${NC}"
+echo -e "  Site Name:     ${GREEN}$SITE_NAME${NC}"
+echo -e "  App URL:       ${GREEN}$SITE_URL${NC}"
+echo -e "  API URL:       ${GREEN}$API_URL${NC}"
+if [ "$ENABLE_STUDIO" = true ]; then
+echo -e "  Studio URL:    ${GREEN}http://localhost:$STUDIO_PORT${NC}"
+fi
+echo ""
+echo -e "${BOLD}Features Enabled:${NC}"
+[ "$FEATURE_PLAY_LOGS" = true ] && echo -e "  ${GREEN}✓${NC} Play Logs"
+[ "$FEATURE_WISHLIST" = true ] && echo -e "  ${GREEN}✓${NC} Wishlist"
+[ "$FEATURE_FOR_SALE" = true ] && echo -e "  ${GREEN}✓${NC} For Sale"
+[ "$FEATURE_MESSAGING" = true ] && echo -e "  ${GREEN}✓${NC} Messaging"
+[ "$FEATURE_COMING_SOON" = true ] && echo -e "  ${GREEN}✓${NC} Coming Soon"
+[ "$FEATURE_DEMO_MODE" = true ] && echo -e "  ${GREEN}✓${NC} Demo Mode"
+echo ""
+echo -e "${BOLD}Next Steps:${NC}"
+echo ""
+echo -e "  1. Start the stack:"
+echo -e "     ${YELLOW}docker compose up -d${NC}"
+echo ""
+echo -e "  2. Wait for services to initialize (~30 seconds)"
+echo ""
+echo -e "  3. Create your admin user:"
+echo -e "     ${YELLOW}./scripts/create-admin.sh${NC}"
+echo ""
+echo -e "  4. Access your site at ${GREEN}$SITE_URL${NC}"
+echo ""
+
+# Save credentials to a secure file
+cat > .credentials << EOF
+# KEEP THIS FILE SECURE - Contains sensitive credentials
+# Generated: $(date)
+
+Database Password: $POSTGRES_PASSWORD
+JWT Secret: $JWT_SECRET
+Anon Key: $ANON_KEY
+Service Role Key: $SERVICE_ROLE_KEY
+EOF
+chmod 600 .credentials
+
+echo -e "${YELLOW}⚠ Credentials saved to .credentials - keep this file secure!${NC}"
+echo ""
