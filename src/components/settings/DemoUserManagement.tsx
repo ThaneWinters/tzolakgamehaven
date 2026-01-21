@@ -77,9 +77,11 @@ export function DemoUserManagement() {
   const [users, setUsers] = useState<DemoUser[]>(DEFAULT_USERS);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<"admin" | "moderator" | "user">("user");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   // Load from session storage
   useEffect(() => {
@@ -104,10 +106,10 @@ export function DemoUserManagement() {
   }, []);
 
   const handleAddUser = async () => {
-    if (!newUserEmail.trim()) {
+    if (!newUserEmail.trim() || !newUserPassword.trim()) {
       toast({
         title: "Error",
-        description: "Please enter an email address",
+        description: "Please fill in all fields",
         variant: "destructive",
       });
       return;
@@ -135,12 +137,13 @@ export function DemoUserManagement() {
 
     saveUsers([...users, newUser]);
     setNewUserEmail("");
+    setNewUserPassword("");
     setNewUserRole("user");
     setAddDialogOpen(false);
     setIsAddingUser(false);
 
     toast({
-      title: "User added (Demo)",
+      title: "User created",
       description: `${newUser.email} has been added with ${newUser.role} role.`,
     });
   };
@@ -162,15 +165,19 @@ export function DemoUserManagement() {
     });
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     const user = users.find((u) => u.id === userId);
     if (!user) return;
 
+    setDeletingUserId(userId);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     const updatedUsers = users.filter((u) => u.id !== userId);
     saveUsers(updatedUsers);
+    setDeletingUserId(null);
 
     toast({
-      title: "User deleted (Demo)",
+      title: "User deleted",
       description: `${user.email} has been removed.`,
     });
   };
@@ -205,13 +212,23 @@ export function DemoUserManagement() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="new-user-email">Email Address</Label>
+                <Label htmlFor="new-user-email">Email</Label>
                 <Input
                   id="new-user-email"
                   type="email"
                   value={newUserEmail}
                   onChange={(e) => setNewUserEmail(e.target.value)}
                   placeholder="user@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-user-password">Password</Label>
+                <Input
+                  id="new-user-password"
+                  type="password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  placeholder="••••••••"
                 />
               </div>
               <div className="space-y-2">
@@ -236,10 +253,10 @@ export function DemoUserManagement() {
                 {isAddingUser ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Adding...
+                    Creating...
                   </>
                 ) : (
-                  "Add User"
+                  "Create User"
                 )}
               </Button>
             </DialogFooter>
@@ -297,15 +314,23 @@ export function DemoUserManagement() {
                           </Select>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                disabled={deletingUserId === user.id}
+                              >
+                                {deletingUserId === user.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                )}
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Delete User?</AlertDialogTitle>
+                                <AlertDialogTitle>Delete User</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  This will remove "{user.email}" from the demo system.
+                                  Are you sure you want to delete "{user.email}"? This action cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
