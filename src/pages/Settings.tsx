@@ -419,50 +419,20 @@ const Settings = () => {
   const fetchUsers = async () => {
     setIsLoadingUsers(true);
     try {
-      // Get all user roles
-      const { data: roles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("user_id, role");
-
-      if (rolesError) throw rolesError;
-
-      // Get current user info
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      
-      // Build users list from roles
-      const userMap = new Map<string, UserWithRole>();
-      
-      // Add current user
-      if (currentUser) {
-        userMap.set(currentUser.id, {
-          id: currentUser.id,
-          email: currentUser.email || "Unknown",
-          created_at: currentUser.created_at || new Date().toISOString(),
-          role: null,
-        });
-      }
-
-      // Apply roles
-      roles?.forEach((r) => {
-        const existing = userMap.get(r.user_id);
-        if (existing) {
-          existing.role = r.role;
-        } else {
-          userMap.set(r.user_id, {
-            id: r.user_id,
-            email: "Unknown",
-            created_at: new Date().toISOString(),
-            role: r.role,
-          });
-        }
+      // Use edge function to list users with admin API
+      const { data, error } = await supabase.functions.invoke("manage-users", {
+        body: { action: "list" },
       });
 
-      setUsers(Array.from(userMap.values()));
-    } catch (error) {
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      setUsers(data.users || []);
+    } catch (error: any) {
       console.error("Error fetching users:", error);
       toast({
         title: "Error",
-        description: "Could not fetch users",
+        description: error.message || "Could not fetch users",
         variant: "destructive",
       });
     } finally {
@@ -821,16 +791,27 @@ const Settings = () => {
     }
     setIsAddingUser(true);
     try {
-      // Note: Creating users requires admin API access which isn't available client-side
-      // This is a placeholder showing the UI capability
+      const { data, error } = await supabase.functions.invoke("manage-users", {
+        body: { 
+          action: "create", 
+          email: newUserEmail.trim(), 
+          password: newUserPassword, 
+          role: newUserRole 
+        },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
       toast({
-        title: "Feature Note",
-        description: "Adding new users requires server-side admin API. Use Supabase dashboard or invite flow.",
+        title: "User created",
+        description: `User ${newUserEmail} has been created successfully.`,
       });
       setAddUserDialogOpen(false);
       setNewUserEmail("");
       setNewUserPassword("");
       setNewUserRole("user");
+      fetchUsers();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -841,9 +822,14 @@ const Settings = () => {
   const handleDeleteUser = async (userId: string) => {
     setDeletingUserId(userId);
     try {
-      // Remove user's role first
-      await supabase.from("user_roles").delete().eq("user_id", userId);
-      toast({ title: "User role removed", description: "User role has been removed." });
+      const { data, error } = await supabase.functions.invoke("manage-users", {
+        body: { action: "delete", userId },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      toast({ title: "User deleted", description: "User has been removed." });
       fetchUsers();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -1717,14 +1703,20 @@ const Settings = () => {
           {isAdmin && (
             <TabsContent value="users" className="space-y-6">
               <Card className="card-elevated">
-                <CardHeader>
-                  <CardTitle className="font-display flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    User Management
-                  </CardTitle>
-                  <CardDescription>
-                    Manage user roles and permissions
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="font-display flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      User Management
+                    </CardTitle>
+                    <CardDescription>
+                      Manage users, roles, and permissions
+                    </CardDescription>
+                  </div>
+                  <Button onClick={() => setAddUserDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add User
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   {isLoadingUsers ? (
@@ -1758,28 +1750,64 @@ const Settings = () => {
                               {new Date(u.created_at).toLocaleDateString()}
                             </TableCell>
                             <TableCell className="text-right">
-                              {u.id !== user?.id ? (
-                                <Select
-                                  value={u.role || "none"}
-                                  onValueChange={(value) => handleUpdateUserRole(u.id, value)}
-                                  disabled={updatingRoleUserId === u.id}
-                                >
-                                  <SelectTrigger className="w-32">
-                                    {updatingRoleUserId === u.id ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <SelectValue />
-                                    )}
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="none">User</SelectItem>
-                                    <SelectItem value="moderator">Moderator</SelectItem>
-                                    <SelectItem value="admin">Admin</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                <span className="text-muted-foreground text-sm">You</span>
-                              )}
+                              <div className="flex items-center justify-end gap-2">
+                                {u.id !== user?.id ? (
+                                  <>
+                                    <Select
+                                      value={u.role || "none"}
+                                      onValueChange={(value) => handleUpdateUserRole(u.id, value)}
+                                      disabled={updatingRoleUserId === u.id}
+                                    >
+                                      <SelectTrigger className="w-32">
+                                        {updatingRoleUserId === u.id ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <SelectValue />
+                                        )}
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">User</SelectItem>
+                                        <SelectItem value="moderator">Moderator</SelectItem>
+                                        <SelectItem value="admin">Admin</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm"
+                                          disabled={deletingUserId === u.id}
+                                        >
+                                          {deletingUserId === u.id ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                          ) : (
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                          )}
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete User</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Are you sure you want to delete "{u.email}"? This action cannot be undone.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => handleDeleteUser(u.id)}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          >
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">You</span>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1788,6 +1816,68 @@ const Settings = () => {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Add User Dialog */}
+              <Dialog open={addUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New User</DialogTitle>
+                    <DialogDescription>
+                      Create a new user account with email and password.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="new-user-email">Email</Label>
+                      <Input
+                        id="new-user-email"
+                        type="email"
+                        placeholder="user@example.com"
+                        value={newUserEmail}
+                        onChange={(e) => setNewUserEmail(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-user-password">Password</Label>
+                      <Input
+                        id="new-user-password"
+                        type="password"
+                        placeholder="••••••••"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-user-role">Role</Label>
+                      <Select value={newUserRole} onValueChange={(v: "admin" | "moderator" | "user") => setNewUserRole(v)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="moderator">Moderator</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setAddUserDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleAddUser} disabled={isAddingUser}>
+                      {isAddingUser ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create User"
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
           )}
 
