@@ -2,9 +2,9 @@
   "id": "dev.gamehaven.cloudronapp",
   "title": "Game Haven",
   "author": "Game Haven",
-  "description": "Board game collection manager with play tracking, wishlists, and messaging. Includes PocketBase backend.",
+  "description": "Board game collection manager with play tracking, wishlists, and messaging.",
   "tagline": "Board Game Collection Manager",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "healthCheckPath": "/health",
   "httpPort": 80,
   "manifestVersion": 2,
@@ -12,11 +12,7 @@
   "contactEmail": "support@example.com",
   "icon": "file://logo.png",
   "tags": ["games", "boardgames", "collection"],
-  "memoryLimit": 512000000,
-  "minBoxVersion": "7.0.0",
-  "addons": {
-    "localstorage": {}
-  },
+  "memoryLimit": 256000000,
   "optionalSso": true,
-  "postInstallMessage": "Game Haven is ready! Access the PocketBase admin at /_/ to create your first admin account and set up the database schema."
+  "minBoxVersion": "7.0.0"
 }
