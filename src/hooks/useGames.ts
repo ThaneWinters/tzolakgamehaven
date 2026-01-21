@@ -113,7 +113,14 @@ export function useAllGamesFlat(enabled = true) {
           .order("title");
 
         if (error) throw error;
-        return games || [];
+        // Defensive mapping: Radix Select requires stable, unique string values.
+        return (games || [])
+          .filter((g) => !!g.id && !!g.title)
+          .map((g) => ({
+            id: String(g.id),
+            title: String(g.title),
+            is_expansion: g.is_expansion === true,
+          }));
       }
 
       // Public users - use the public view
@@ -124,11 +131,13 @@ export function useAllGamesFlat(enabled = true) {
         .order("title");
 
       if (error) throw error;
-      return (games || []).map(g => ({
-        id: g.id!,
-        title: g.title!,
-        is_expansion: g.is_expansion === true,
-      }));
+      return (games || [])
+        .filter((g) => !!g.id && !!g.title)
+        .map((g) => ({
+          id: String(g.id),
+          title: String(g.title),
+          is_expansion: g.is_expansion === true,
+        }));
     },
     enabled,
     staleTime: 1000 * 60 * 5, // 5 minutes
