@@ -1,9 +1,9 @@
-import { Link } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Link, useSearchParams, useLocation } from "react-router-dom";
+import { Menu, X, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
-
+import { useDemoMode } from "@/contexts/DemoContext";
 // Social media icons as inline SVGs for consistency with site styling
 const TwitterIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -36,6 +36,8 @@ interface HeaderProps {
 
 export function Header({ onMenuClick, isSidebarOpen }: HeaderProps) {
   const { data: settings } = useSiteSettings();
+  const { isDemoMode } = useDemoMode();
+  const location = useLocation();
   
   const socialLinks = [
     { url: settings?.twitter_handle, icon: TwitterIcon, label: "Twitter/X", isHandle: true },
@@ -99,6 +101,18 @@ export function Header({ onMenuClick, isSidebarOpen }: HeaderProps) {
           )}
           
           <ThemeToggle />
+          
+          {/* Demo mode navigation */}
+          {isDemoMode && location.pathname !== "/demo/settings" && (
+            <Link 
+              to="/demo/settings" 
+              className="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+            >
+              <FlaskConical className="h-4 w-4" />
+              <span className="hidden sm:inline">Demo Settings</span>
+            </Link>
+          )}
+          
           <Link to="/" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-2">
             Home
           </Link>
