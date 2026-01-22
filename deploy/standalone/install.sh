@@ -704,9 +704,14 @@ sed -i "s|-- PLACEHOLDER_PASSWORD_COMMANDS|ALTER ROLE postgres WITH PASSWORD '${
 # Copy SQL file into container and execute
 docker cp /tmp/init-roles.sql gamehaven-db:/tmp/init-roles.sql
 
-# Run SQL and capture output/errors
+# Run SQL and capture output/errors.
+# IMPORTANT: this script uses `set -e` globally; command substitution will cause
+# an immediate exit on non-zero status before we can inspect `$?`.
+echo -e "${CYAN}Running role init SQL...${NC}"
+set +e
 SQL_OUTPUT=$(docker exec gamehaven-db psql -v ON_ERROR_STOP=1 -U supabase_admin -d postgres -f /tmp/init-roles.sql 2>&1)
 SQL_EXIT_CODE=$?
+set -e
 
 if [ $SQL_EXIT_CODE -ne 0 ]; then
     echo -e "${RED}Error: Failed to configure database roles${NC}"
