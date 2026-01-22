@@ -64,7 +64,9 @@ services:
       - -c
       - app.settings.postgres_password=${POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # The supabase/postgres image uses supabase_admin as the primary superuser.
+      # Using postgres here causes noisy FATAL logs and unreliable readiness checks.
+      test: ["CMD-SHELL", "pg_isready -U supabase_admin -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -101,6 +103,9 @@ services:
       GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
       GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
       GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+    # GoTrue can hard-fail on startup if the DB socket isn't accepting connections yet.
+    # Wrap startup with a lightweight TCP wait to avoid crash loops.
+    command: ["sh", "-c", "until (echo >/dev/tcp/db/5432) >/dev/null 2>&1; do echo 'waiting for db:5432...'; sleep 1; done; exec auth"]
     depends_on:
       db:
         condition: service_healthy
