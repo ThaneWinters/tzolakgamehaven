@@ -105,9 +105,8 @@ services:
       GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
       GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
       GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
-    # GoTrue can hard-fail on startup if the DB socket isn't accepting connections yet.
-    # Wrap startup with a lightweight TCP wait to avoid crash loops.
-    command: ["sh", "-c", "until (echo >/dev/tcp/db/5432) >/dev/null 2>&1; do echo 'waiting for db:5432...'; sleep 1; done; exec auth"]
+    # Note: don't use /dev/tcp here (it's a bash feature and not available in this image).
+    # We rely on the DB healthcheck + depends_on to ensure Postgres is accepting connections.
     depends_on:
       db:
         condition: service_healthy
