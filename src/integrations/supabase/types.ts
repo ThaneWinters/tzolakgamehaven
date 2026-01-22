@@ -512,9 +512,13 @@ export type Database = {
           id: string | null
           image_url: string | null
           in_base_game_box: boolean | null
+          inserts: boolean | null
           is_coming_soon: boolean | null
           is_expansion: boolean | null
           is_for_sale: boolean | null
+          location_misc: string | null
+          location_room: string | null
+          location_shelf: string | null
           max_players: number | null
           min_players: number | null
           parent_game_id: string | null
@@ -542,9 +546,13 @@ export type Database = {
           id?: string | null
           image_url?: string | null
           in_base_game_box?: boolean | null
+          inserts?: boolean | null
           is_coming_soon?: boolean | null
           is_expansion?: boolean | null
           is_for_sale?: boolean | null
+          location_misc?: string | null
+          location_room?: string | null
+          location_shelf?: string | null
           max_players?: number | null
           min_players?: number | null
           parent_game_id?: string | null
@@ -572,9 +580,13 @@ export type Database = {
           id?: string | null
           image_url?: string | null
           in_base_game_box?: boolean | null
+          inserts?: boolean | null
           is_coming_soon?: boolean | null
           is_expansion?: boolean | null
           is_for_sale?: boolean | null
+          location_misc?: string | null
+          location_room?: string | null
+          location_shelf?: string | null
           max_players?: number | null
           min_players?: number | null
           parent_game_id?: string | null
