@@ -63,6 +63,8 @@ services:
       - postgres
       - -c
       - app.settings.postgres_password=${POSTGRES_PASSWORD}
+      - -c
+      - listen_addresses=*
     healthcheck:
       # The supabase/postgres image uses supabase_admin as the primary superuser.
       # Using postgres here causes noisy FATAL logs and unreliable readiness checks.
