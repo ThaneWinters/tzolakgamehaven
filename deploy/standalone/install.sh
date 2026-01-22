@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# Game Haven - Interactive Installer
-# Creates a customized .env file for your deployment
+# Game Haven - One-Click Installer
+# Sets up config, starts the stack, runs migrations, and creates admin user
 #
 
 set -e
@@ -81,10 +81,6 @@ generate_jwt() {
     local header=$(echo -n '{"alg":"HS256","typ":"JWT"}' | openssl base64 -e | tr -d '=' | tr '/+' '_-' | tr -d '\n')
     
     # Payload with required claims for GoTrue admin endpoints.
-    # - aud: must match GOTRUE_JWT_AUD (docker-compose sets 'authenticated')
-    # - sub: a UUID string (commonly all zeros for service tokens)
-    # - role: 'anon' or 'service_role'
-    # - iss/iat/exp: standard JWT claims
     local payload=$(echo -n "{\"role\":\"$role\",\"iss\":\"supabase\",\"aud\":\"authenticated\",\"sub\":\"00000000-0000-0000-0000-000000000000\",\"iat\":$(date +%s),\"exp\":2524608000}" | openssl base64 -e | tr -d '=' | tr '/+' '_-' | tr -d '\n')
     
     # Signature
@@ -94,12 +90,14 @@ generate_jwt() {
 }
 
 # Escape value for safe use in double-quoted .env strings
-# Works with both docker compose (dotenv) AND bash source
 escape_env_value() {
     local val="$1"
-    # Escape: backslash, double-quote, dollar sign, backtick
     printf '%s' "$val" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\$/\\$/g' -e 's/`/\\`/g'
 }
+
+# ==========================================
+# COLLECT CONFIGURATION
+# ==========================================
 
 echo -e "${BOLD}━━━ Site Configuration ━━━${NC}"
 echo ""
@@ -177,14 +175,26 @@ echo ""
 prompt_yn ENABLE_STUDIO "Enable Supabase Studio (database admin UI)?" "y"
 
 echo ""
-echo -e "${BOLD}━━━ Admin Account (Recommended) ━━━${NC}"
+echo -e "${BOLD}━━━ Admin Account ━━━${NC}"
+echo ""
+echo -e "${CYAN}Create the first admin account for your site:${NC}"
 echo ""
 
-prompt_yn SETUP_ADMIN_NOW "Create the first admin account now?" "y"
-if [ "$SETUP_ADMIN_NOW" = true ]; then
+prompt ADMIN_EMAIL "Admin email" ""
+while [ -z "$ADMIN_EMAIL" ]; do
+    echo -e "${RED}Admin email is required${NC}"
     prompt ADMIN_EMAIL "Admin email" ""
-    prompt ADMIN_PASSWORD "Admin password" "" true
-fi
+done
+
+prompt ADMIN_PASSWORD "Admin password (min 6 chars)" "" true
+while [ ${#ADMIN_PASSWORD} -lt 6 ]; do
+    echo -e "${RED}Password must be at least 6 characters${NC}"
+    prompt ADMIN_PASSWORD "Admin password (min 6 chars)" "" true
+done
+
+# ==========================================
+# GENERATE SECRETS
+# ==========================================
 
 echo ""
 echo -e "${BOLD}━━━ Generating Secrets ━━━${NC}"
@@ -204,7 +214,10 @@ echo -e "${GREEN}✓${NC} Postgres password generated"
 echo -e "${GREEN}✓${NC} JWT secret generated"
 echo -e "${GREEN}✓${NC} API keys generated"
 
-# Create .env file
+# ==========================================
+# CREATE .ENV FILE
+# ==========================================
+
 echo ""
 echo -e "${BOLD}━━━ Creating Configuration ━━━${NC}"
 echo ""
@@ -252,17 +265,12 @@ ESC_SMTP_PASS=$(escape_env_value "$SMTP_PASS")
     echo "# ==================="
     echo "# Database"
     echo "# ==================="
-    # Generated secrets are restricted to safe characters (see generate_secret),
-    # so keep them unquoted to avoid Docker Compose treating quotes as literal.
     echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
     echo ""
     echo "# ==================="
     echo "# Authentication"
     echo "# ==================="
     echo "JWT_SECRET=${JWT_SECRET}"
-    # NOTE: docker compose .env parsing does NOT reliably strip quotes.
-    # Keep JWTs unquoted so Kong key-auth sees the exact same value that
-    # scripts (which `source .env`) will send in the `apikey` header.
     echo "ANON_KEY=${ANON_KEY}"
     echo "SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
     echo "SECRET_KEY_BASE=${SECRET_KEY_BASE}"
@@ -300,65 +308,173 @@ EOF
     echo -e "${GREEN}✓${NC} Enabled Supabase Studio"
 fi
 
-# Summary
-echo ""
-echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║${NC}               ${BOLD}${GREEN}Configuration Complete!${NC}                     ${CYAN}║${NC}"
-echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${BOLD}Your Settings:${NC}"
-echo -e "  Site Name:     ${GREEN}$SITE_NAME${NC}"
-echo -e "  App URL:       ${GREEN}$SITE_URL${NC}"
-echo -e "  API URL:       ${GREEN}$API_URL${NC}"
-if [ "$ENABLE_STUDIO" = true ]; then
-echo -e "  Studio URL:    ${GREEN}http://localhost:$STUDIO_PORT${NC}"
-fi
-echo ""
-echo -e "${BOLD}Features Enabled:${NC}"
-[ "$FEATURE_PLAY_LOGS" = true ] && echo -e "  ${GREEN}✓${NC} Play Logs"
-[ "$FEATURE_WISHLIST" = true ] && echo -e "  ${GREEN}✓${NC} Wishlist"
-[ "$FEATURE_FOR_SALE" = true ] && echo -e "  ${GREEN}✓${NC} For Sale"
-[ "$FEATURE_MESSAGING" = true ] && echo -e "  ${GREEN}✓${NC} Messaging"
-[ "$FEATURE_COMING_SOON" = true ] && echo -e "  ${GREEN}✓${NC} Coming Soon"
-[ "$FEATURE_DEMO_MODE" = true ] && echo -e "  ${GREEN}✓${NC} Demo Mode"
-echo ""
-echo -e "${BOLD}Next Steps:${NC}"
-echo ""
-echo -e "  1. Start the stack:"
-echo -e "     ${YELLOW}docker compose up -d${NC}"
-echo ""
-echo -e "  2. Wait for services to initialize (~30 seconds)"
-echo ""
-if [ "$SETUP_ADMIN_NOW" = true ]; then
-echo -e "  3. Create your admin user (non-interactive):"
-echo -e "     ${YELLOW}ADMIN_EMAIL=... ADMIN_PASSWORD=... ./scripts/create-admin.sh${NC}"
-else
-echo -e "  3. Create your admin user:"
-echo -e "     ${YELLOW}./scripts/create-admin.sh${NC}"
-fi
-echo ""
-echo -e "  4. Access your site at ${GREEN}$SITE_URL${NC}"
-echo ""
-
 # Save credentials to a secure file
-cat > .credentials << EOF
-# KEEP THIS FILE SECURE - Contains sensitive credentials
-# Generated: $(date)
-
-Database Password: $POSTGRES_PASSWORD
-JWT Secret: $JWT_SECRET
-Anon Key: $ANON_KEY
-Service Role Key: $SERVICE_ROLE_KEY
-EOF
-
-if [ "$SETUP_ADMIN_NOW" = true ]; then
-cat >> .credentials << EOF
-
-Admin Email: $ADMIN_EMAIL
-Admin Password: $ADMIN_PASSWORD
-EOF
-fi
+{
+    echo "# KEEP THIS FILE SECURE - Contains sensitive credentials"
+    echo "# Generated: $(date)"
+    echo ""
+    echo "Database Password: $POSTGRES_PASSWORD"
+    echo "JWT Secret: $JWT_SECRET"
+    echo "Anon Key: $ANON_KEY"
+    echo "Service Role Key: $SERVICE_ROLE_KEY"
+    echo ""
+    echo "Admin Email: $ADMIN_EMAIL"
+    echo "Admin Password: $ADMIN_PASSWORD"
+} > .credentials
 chmod 600 .credentials
 
+echo -e "${GREEN}✓${NC} Saved credentials to .credentials"
+
+# ==========================================
+# START DOCKER STACK
+# ==========================================
+
+echo ""
+echo -e "${BOLD}━━━ Starting Services ━━━${NC}"
+echo ""
+
+echo -e "${CYAN}Starting Docker containers...${NC}"
+docker compose up -d
+
+# ==========================================
+# WAIT FOR DATABASE
+# ==========================================
+
+echo ""
+echo -e "${CYAN}Waiting for database to be ready...${NC}"
+
+for i in {1..60}; do
+    if docker exec gamehaven-db pg_isready -U supabase_admin >/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} Database is ready"
+        break
+    fi
+    
+    if [ $i -eq 60 ]; then
+        echo -e "${RED}Error: Database failed to start${NC}"
+        echo -e "Run: ${YELLOW}docker logs gamehaven-db${NC}"
+        exit 1
+    fi
+    
+    echo "  Waiting for database... ($i/60)"
+    sleep 2
+done
+
+# ==========================================
+# RUN APPLICATION MIGRATIONS
+# ==========================================
+
+echo ""
+echo -e "${BOLD}━━━ Running Database Migrations ━━━${NC}"
+echo ""
+
+# The 00-init-users.sql runs automatically via docker-entrypoint-initdb.d
+# But we need to ensure application schema is set up
+# Note: migrations in docker-entrypoint-initdb.d only run on first init
+
+echo -e "${CYAN}Applying application schema...${NC}"
+
+# Run the application schema migration manually to ensure it's applied
+# (handles both fresh installs and existing volumes)
+docker exec -i gamehaven-db psql -U supabase_admin -d postgres < ./migrations/01-app-schema.sql 2>/dev/null || true
+
+echo -e "${GREEN}✓${NC} Application schema ready"
+
+# ==========================================
+# WAIT FOR AUTH SERVICE
+# ==========================================
+
+echo ""
+echo -e "${CYAN}Waiting for auth service to be ready...${NC}"
+
+AUTH_HEALTH_URL="http://localhost:${KONG_PORT}/auth/v1/health"
+
+for i in {1..90}; do
+    if curl -fsS --max-time 2 "$AUTH_HEALTH_URL" >/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} Auth service is ready"
+        break
+    fi
+    
+    if [ $i -eq 90 ]; then
+        echo -e "${RED}Error: Auth service failed to start${NC}"
+        echo -e "Run: ${YELLOW}docker logs gamehaven-auth${NC}"
+        exit 1
+    fi
+    
+    echo "  Waiting for auth... ($i/90)"
+    sleep 2
+done
+
+# ==========================================
+# CREATE ADMIN USER
+# ==========================================
+
+echo ""
+echo -e "${BOLD}━━━ Creating Admin User ━━━${NC}"
+echo ""
+
+echo -e "${CYAN}Creating admin account...${NC}"
+
+# Create user via GoTrue API
+RESPONSE=$(curl -s -X POST "http://localhost:${KONG_PORT}/auth/v1/admin/users" \
+    -H "Content-Type: application/json" \
+    -H "apikey: ${SERVICE_ROLE_KEY}" \
+    -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
+    -d "{
+        \"email\": \"${ADMIN_EMAIL}\",
+        \"password\": \"${ADMIN_PASSWORD}\",
+        \"email_confirm\": true
+    }")
+
+# Extract user ID
+USER_ID=$(echo $RESPONSE | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+if [ -z "$USER_ID" ]; then
+    echo -e "${RED}Error creating admin user. Response:${NC}"
+    echo "$RESPONSE"
+    echo ""
+    echo -e "${YELLOW}You can try manually later with:${NC}"
+    echo -e "  ${YELLOW}./scripts/create-admin.sh${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓${NC} User created: $USER_ID"
+
+# Assign admin role
+echo -e "${CYAN}Assigning admin role...${NC}"
+
+docker exec -i gamehaven-db psql -U supabase_admin -d postgres << EOF
+INSERT INTO public.user_roles (user_id, role)
+VALUES ('${USER_ID}', 'admin')
+ON CONFLICT (user_id, role) DO NOTHING;
+EOF
+
+echo -e "${GREEN}✓${NC} Admin role assigned"
+
+# ==========================================
+# COMPLETE
+# ==========================================
+
+echo ""
+echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║${NC}             ${BOLD}${GREEN}Installation Complete!${NC}                        ${CYAN}║${NC}"
+echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "${BOLD}Your Game Haven is ready!${NC}"
+echo ""
+echo -e "  ${BOLD}App URL:${NC}     ${GREEN}$SITE_URL${NC}"
+if [ "$ENABLE_STUDIO" = true ]; then
+echo -e "  ${BOLD}Studio URL:${NC}  ${GREEN}http://localhost:$STUDIO_PORT${NC}"
+fi
+echo ""
+echo -e "  ${BOLD}Admin Login:${NC}"
+echo -e "    Email:     ${GREEN}$ADMIN_EMAIL${NC}"
+echo -e "    Password:  ${GREEN}(saved in .credentials)${NC}"
+echo ""
+echo -e "${BOLD}Useful Commands:${NC}"
+echo -e "  View logs:      ${YELLOW}docker compose logs -f${NC}"
+echo -e "  Stop services:  ${YELLOW}docker compose down${NC}"
+echo -e "  Restart:        ${YELLOW}docker compose restart${NC}"
+echo -e "  Backup DB:      ${YELLOW}./scripts/backup.sh${NC}"
+echo ""
 echo -e "${YELLOW}⚠ Credentials saved to .credentials - keep this file secure!${NC}"
 echo ""

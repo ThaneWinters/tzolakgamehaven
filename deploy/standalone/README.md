@@ -2,103 +2,9 @@
 
 Complete self-hosted package including the Game Haven app and full Supabase stack.
 
-## Fresh Server Setup
+## Quick Start (One Command)
 
-Starting from a fresh Ubuntu/Debian server with only SSH access:
-
-### 1. Connect to Your Server
-
-```bash
-ssh root@your-server-ip
-```
-
-### 2. Update System & Install Prerequisites
-
-```bash
-# Update packages
-apt update && apt upgrade -y
-
-# Install required tools
-apt install -y curl git wget unzip
-```
-
-### 3. Install Docker
-
-```bash
-# Install Docker using the official script
-curl -fsSL https://get.docker.com | sh
-
-# Start Docker and enable on boot
-systemctl start docker
-systemctl enable docker
-
-# Verify installation
-docker --version
-docker compose version
-```
-
-### 4. Create a Non-Root User (Recommended)
-
-```bash
-# Create user
-adduser gamehaven
-usermod -aG docker gamehaven
-usermod -aG sudo gamehaven
-
-# Switch to new user
-su - gamehaven
-```
-
-### 5. Download Game Haven
-
-```bash
-# Clone the repository
-git clone https://github.com/ThaneWinters/GameTavern.git
-cd GameTavern/deploy/standalone
-
-# Make scripts executable
-chmod +x install.sh
-chmod +x scripts/*.sh
-```
-
-### 6. Run the Installer
-
-```bash
-./install.sh
-```
-
-The wizard will prompt you for:
-- Site name and description
-- Domain (or localhost for testing)
-- Ports for each service
-- Feature toggles
-- Email/SMTP settings (optional)
-- Whether to enable Admin Studio
-
-### 7. Start the Stack
-
-```bash
-docker compose up -d
-```
-
-Wait ~60 seconds for all services to initialize.
-
-### 8. Create Your Admin User
-
-```bash
-./scripts/create-admin.sh
-```
-
-### 9. Access Your Site
-
-- **Application**: `http://your-server-ip:3000`
-- **Admin Studio** (if enabled): `http://your-server-ip:3001`
-
----
-
-## One-Line Install (Alternative)
-
-For an even faster setup on a fresh server:
+On a fresh Ubuntu/Debian server:
 
 ```bash
 curl -fsSL https://get.docker.com | sh && \
@@ -107,6 +13,58 @@ cd GameTavern/deploy/standalone && \
 chmod +x install.sh scripts/*.sh && \
 ./install.sh
 ```
+
+The installer will:
+1. Prompt for site configuration and admin credentials
+2. Generate secure secrets
+3. Start all Docker services
+4. Run database migrations
+5. Create your admin user
+
+**That's it!** Your Game Haven is ready at `http://your-server-ip:3000`
+
+---
+
+## Step-by-Step Installation
+
+### 1. Prepare Your Server
+
+```bash
+# Connect to your server
+ssh root@your-server-ip
+
+# Update packages and install prerequisites
+apt update && apt upgrade -y
+apt install -y curl git wget unzip
+
+# Install Docker
+curl -fsSL https://get.docker.com | sh
+systemctl start docker && systemctl enable docker
+
+# (Optional) Create a non-root user
+adduser gamehaven
+usermod -aG docker gamehaven
+usermod -aG sudo gamehaven
+su - gamehaven
+```
+
+### 2. Download and Install
+
+```bash
+git clone https://github.com/ThaneWinters/GameTavern.git
+cd GameTavern/deploy/standalone
+chmod +x install.sh scripts/*.sh
+./install.sh
+```
+
+### 3. Access Your Site
+
+- **Application**: `http://your-server-ip:3000`
+- **Admin Studio** (if enabled): `http://your-server-ip:3001`
+
+Log in with the admin email and password you provided during installation.
+
+---
 
 ## What's Included
 
@@ -120,29 +78,25 @@ chmod +x install.sh scripts/*.sh && \
 | **Realtime** | WebSocket subscriptions | - |
 | **Studio** | Database admin UI (optional) | 3001 |
 
-## Installation Options
+## How the Database Gets Set Up
 
-### Interactive Install (Recommended)
+The standalone installer automatically handles all database setup:
 
-```bash
-./install.sh
-```
+1. **Supabase Postgres Image** - Uses `supabase/postgres:15.6.1.143` which includes the internal schemas (`auth`, `storage`, etc.)
 
-The wizard will prompt for:
-- Site name and description
-- Domain and ports
-- Feature toggles
-- Email/SMTP configuration
-- Admin Studio preference
+2. **Role Password Initialization** (`migrations/00-init-users.sql`) - Sets up passwords for internal Supabase roles during container first boot
 
-### Manual Configuration
+3. **Application Schema** (`migrations/01-app-schema.sql`) - Creates all Game Haven tables:
+   - `publishers`, `mechanics` (lookup tables)
+   - `games`, `game_mechanics`, `game_admin_data` (game data)
+   - `game_sessions`, `game_session_players` (play logs)
+   - `game_wishlist`, `game_messages` (user interactions)
+   - `site_settings`, `user_roles` (configuration)
+   - All RLS policies and security functions
 
-Copy the example environment file and edit:
+4. **Admin User Creation** - Creates your admin account via GoTrue API and assigns the `admin` role
 
-```bash
-cp .env.example .env
-nano .env
-```
+All of this happens automatically when you run `./install.sh`.
 
 ## Features
 
@@ -159,10 +113,16 @@ Toggle features on/off via environment variables:
 
 ## Administration
 
-### Create Admin User
+### Create Additional Admin Users
 
 ```bash
 ./scripts/create-admin.sh
+```
+
+Or non-interactively:
+
+```bash
+ADMIN_EMAIL="user@example.com" ADMIN_PASSWORD="securepass" ./scripts/create-admin.sh
 ```
 
 ### Access Supabase Studio
@@ -261,51 +221,28 @@ docker compose up -d
 
 ### Services not starting / "password authentication failed"
 
-The `create-admin.sh` script automatically detects and fixes this issue. If services show as "Restarting", simply run:
+Run the admin creation script which auto-detects and fixes password sync issues:
 
 ```bash
 ./scripts/create-admin.sh
 ```
 
-The script will:
-1. Detect unhealthy services
-2. Synchronize database passwords
-3. Restart affected services
-4. Wait for everything to be ready
-5. Then create the admin user
-
-**Manual fix** (if needed):
+Or manually fix:
 
 ```bash
 ./scripts/fix-db-passwords.sh
 ```
 
-### Roles missing ("role does not exist")
+### Auth service not responding
 
-If you see errors like `role "supabase_auth_admin" does not exist`, the DB volume likely wasnt initialized correctly (or an old volume is being reused).
-
-The latest scripts will attempt to create the missing internal roles automatically, but if services still loop/restart, do a clean reset:
+Check logs:
 
 ```bash
-docker compose down -v
-docker compose up -d
-./scripts/create-admin.sh
+docker logs gamehaven-auth --tail=50
+docker logs gamehaven-kong --tail=50
 ```
 
-Also note: changing `POSTGRES_PASSWORD`, `JWT_SECRET`, `ANON_KEY`, or `SERVICE_ROLE_KEY` after the first boot can break auth/API until you either re-run the installer and/or recreate volumes.
-
-### Check service health
-
-```bash
-# Check service health
-docker compose ps
-
-# Check specific logs
-docker compose logs db
-docker compose logs auth
-```
-
-### Database connection issues
+### Database issues
 
 ```bash
 # Verify database is ready
@@ -315,7 +252,7 @@ docker exec gamehaven-db pg_isready
 docker compose logs db
 ```
 
-### Reset everything
+### Complete Reset
 
 ```bash
 # Stop and remove all containers and volumes
@@ -323,8 +260,6 @@ docker compose down -v
 
 # Re-run installer
 ./install.sh
-docker compose up -d
-./scripts/create-admin.sh
 ```
 
 ## Requirements
@@ -336,7 +271,7 @@ docker compose up -d
 
 ## Security Notes
 
-1. **Change default passwords** - The installer generates secure passwords automatically
+1. **Secure passwords** - The installer generates cryptographically secure passwords
 2. **Use HTTPS in production** - Configure SSL via reverse proxy
 3. **Backup regularly** - Use the provided backup script
-4. **Keep credentials secure** - The `.credentials` file contains sensitive data
+4. **Keep credentials secure** - The `.credentials` file contains sensitive data (chmod 600)

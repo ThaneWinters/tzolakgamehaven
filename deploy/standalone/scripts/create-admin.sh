@@ -1,7 +1,11 @@
 #!/bin/bash
 #
 # Create Admin User for Game Haven
-# Run this after docker compose up
+# Can be run standalone or credentials passed via environment
+#
+# Usage:
+#   Interactive:  ./scripts/create-admin.sh
+#   Non-interactive: ADMIN_EMAIL=... ADMIN_PASSWORD=... ./scripts/create-admin.sh
 #
 
 set -e
@@ -27,11 +31,13 @@ echo ""
 echo -e "${BLUE}━━━ Create Admin User ━━━${NC}"
 echo ""
 
+# ==========================================
+# Helper Functions
+# ==========================================
+
 AUTH_HEALTH_URL="http://localhost:${KONG_HTTP_PORT:-8000}/auth/v1/health"
 
 is_auth_ready() {
-    # GoTrue exposes a health endpoint. We go through Kong since that's what the
-    # host will reach in most deployments.
     curl -fsS --max-time 2 "$AUTH_HEALTH_URL" >/dev/null 2>&1
 }
 
@@ -43,6 +49,7 @@ wait_for_auth() {
         if is_auth_ready; then
             return 0
         fi
+        echo "  Waiting for auth... ($((waited/2 + 1))/$((max_seconds/2)))"
         sleep 2
         waited=$((waited + 2))
     done
@@ -50,30 +57,9 @@ wait_for_auth() {
     return 1
 }
 
-# ==========================================
-# Step 1: Check and fix DB user passwords
-# ==========================================
-echo -e "${YELLOW}Checking database connectivity...${NC}"
-
-# Prefer a real readiness check over docker health (compose may not define healthchecks)
-if wait_for_auth 30; then
-    echo -e "${GREEN}✓${NC} Auth service is reachable"
-else
-    echo -e "${YELLOW}Auth service not reachable yet. Attempting database password sync...${NC}"
+sync_db_passwords() {
+    echo -e "${YELLOW}Synchronizing database passwords...${NC}"
     
-    # Wait for postgres to be ready
-    # NOTE: supabase/postgres images typically use `supabase_admin` as the DB superuser.
-    # Using `postgres` can fail (role may not exist) in some setups.
-    for i in {1..30}; do
-        if docker exec gamehaven-db pg_isready -U supabase_admin >/dev/null 2>&1; then
-            break
-        fi
-        echo "  Waiting for database... ($i/30)"
-        sleep 1
-    done
-    
-    # Reset passwords for internal users.
-    # NOTE: On some installs/volumes these roles may not exist yet; create them if missing.
     # Escape single quotes in password for SQL
     ESCAPED_PW=$(printf '%s' "$POSTGRES_PASSWORD" | sed "s/'/''/g")
     
@@ -86,9 +72,6 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN
     CREATE ROLE authenticator WITH LOGIN;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
-    CREATE ROLE supabase_admin WITH LOGIN;
-  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_storage_admin') THEN
     CREATE ROLE supabase_storage_admin WITH LOGIN;
   END IF;
@@ -97,33 +80,65 @@ END
 
 ALTER ROLE supabase_auth_admin WITH PASSWORD '${ESCAPED_PW}';
 ALTER ROLE authenticator WITH PASSWORD '${ESCAPED_PW}';
-ALTER ROLE supabase_admin WITH PASSWORD '${ESCAPED_PW}';
 ALTER ROLE supabase_storage_admin WITH PASSWORD '${ESCAPED_PW}';
 EOSQL
     
     echo -e "${GREEN}✓${NC} Database passwords synchronized"
-    
-    # Restart affected services
-    echo -e "${YELLOW}Restarting services...${NC}"
-    docker restart gamehaven-auth gamehaven-rest gamehaven-realtime >/dev/null 2>&1
-    
-    # Wait for auth to become healthy
-    echo -e "${YELLOW}Waiting for services to initialize...${NC}"
-    if wait_for_auth 120; then
-        echo -e "${GREEN}✓${NC} Auth service is reachable"
-    else
-        echo -e "${RED}Error: Auth service still not reachable at:${NC} ${AUTH_HEALTH_URL}"
-        echo -e "${YELLOW}Tip:${NC} Run: docker logs gamehaven-auth --tail=200"
+}
+
+# ==========================================
+# Step 1: Ensure services are ready
+# ==========================================
+
+echo -e "${YELLOW}Checking service health...${NC}"
+
+# Wait for database first
+for i in {1..30}; do
+    if docker exec gamehaven-db pg_isready -U supabase_admin >/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} Database is ready"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo -e "${RED}Error: Database not responding${NC}"
         exit 1
     fi
+    echo "  Waiting for database... ($i/30)"
+    sleep 1
+done
+
+# Check if auth is already reachable
+if is_auth_ready; then
+    echo -e "${GREEN}✓${NC} Auth service is ready"
+else
+    echo -e "${YELLOW}Auth service not reachable. Attempting recovery...${NC}"
+    
+    # Sync passwords and restart
+    sync_db_passwords
+    
+    echo -e "${YELLOW}Restarting services...${NC}"
+    docker restart gamehaven-auth gamehaven-rest gamehaven-realtime >/dev/null 2>&1 || true
+    
+    echo -e "${YELLOW}Waiting for services to initialize...${NC}"
+    if ! wait_for_auth 120; then
+        echo -e "${RED}Error: Auth service failed to start${NC}"
+        echo ""
+        echo -e "${YELLOW}Troubleshooting:${NC}"
+        echo -e "  1. Check auth logs: ${YELLOW}docker logs gamehaven-auth --tail=50${NC}"
+        echo -e "  2. Check Kong logs: ${YELLOW}docker logs gamehaven-kong --tail=50${NC}"
+        echo -e "  3. Check all services: ${YELLOW}docker compose ps${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✓${NC} Auth service is ready"
 fi
 
 # ==========================================
 # Step 2: Collect admin credentials
 # ==========================================
+
 echo ""
 
-# Support non-interactive usage from install.sh
+# Support non-interactive usage
 if [ -z "${ADMIN_EMAIL:-}" ]; then
     read -p "$(echo -e "${BLUE}?${NC} Admin email: ")" ADMIN_EMAIL
 fi
@@ -147,22 +162,22 @@ fi
 # ==========================================
 # Step 3: Create user via GoTrue API
 # ==========================================
+
 echo ""
 echo -e "${YELLOW}Creating admin user...${NC}"
 
-# Kong key-auth expects the key that was configured in kong.yml.
-# The install wizard typically writes SERVICE_ROLE_KEY, while kong.yml may reference SUPABASE_SERVICE_KEY.
-ADMIN_API_KEY="${SUPABASE_SERVICE_KEY:-${SERVICE_ROLE_KEY}}"
+# Get service key (install.sh uses SERVICE_ROLE_KEY)
+ADMIN_API_KEY="${SERVICE_ROLE_KEY:-${SUPABASE_SERVICE_KEY}}"
 
 if [ -z "$ADMIN_API_KEY" ]; then
     echo -e "${RED}Error: No service key found in environment.${NC}"
-    echo -e "Expected one of: ${YELLOW}SUPABASE_SERVICE_KEY${NC} or ${YELLOW}SERVICE_ROLE_KEY${NC}"
+    echo -e "Expected: ${YELLOW}SERVICE_ROLE_KEY${NC}"
     exit 1
 fi
 
-# Helpful sanity check (service keys are usually JWTs)
+# Sanity check (service keys are JWTs)
 if ! echo "$ADMIN_API_KEY" | grep -q '\.'; then
-    echo -e "${YELLOW}Warning:${NC} Service key doesn't look like a JWT; /auth/v1/admin endpoints may return Unauthorized."
+    echo -e "${YELLOW}Warning:${NC} Service key doesn't look like a JWT"
 fi
 
 RESPONSE=$(curl -s -X POST "http://localhost:${KONG_HTTP_PORT:-8000}/auth/v1/admin/users" \
@@ -179,16 +194,37 @@ RESPONSE=$(curl -s -X POST "http://localhost:${KONG_HTTP_PORT:-8000}/auth/v1/adm
 USER_ID=$(echo $RESPONSE | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 if [ -z "$USER_ID" ]; then
-    echo -e "${RED}Error creating user. Response:${NC}"
-    echo "$RESPONSE"
-    exit 1
+    # Check for common errors
+    if echo "$RESPONSE" | grep -q "already registered"; then
+        echo -e "${YELLOW}User already exists. Attempting to find user ID...${NC}"
+        
+        # Try to get user by email
+        USER_RESPONSE=$(curl -s "http://localhost:${KONG_HTTP_PORT:-8000}/auth/v1/admin/users" \
+            -H "apikey: ${ADMIN_API_KEY}" \
+            -H "Authorization: Bearer ${ADMIN_API_KEY}")
+        
+        USER_ID=$(echo "$USER_RESPONSE" | grep -o "\"id\":\"[^\"]*\".*\"email\":\"${ADMIN_EMAIL}\"" | head -1 | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        
+        if [ -z "$USER_ID" ]; then
+            echo -e "${RED}Could not find existing user. Response:${NC}"
+            echo "$RESPONSE"
+            exit 1
+        fi
+        
+        echo -e "${GREEN}✓${NC} Found existing user: $USER_ID"
+    else
+        echo -e "${RED}Error creating user. Response:${NC}"
+        echo "$RESPONSE"
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✓${NC} User created: $USER_ID"
 fi
-
-echo -e "${GREEN}✓${NC} User created: $USER_ID"
 
 # ==========================================
 # Step 4: Assign admin role
 # ==========================================
+
 echo -e "${YELLOW}Assigning admin role...${NC}"
 
 docker exec -i gamehaven-db psql -U supabase_admin -d postgres << EOF
