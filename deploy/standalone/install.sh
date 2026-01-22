@@ -177,6 +177,16 @@ echo ""
 prompt_yn ENABLE_STUDIO "Enable Supabase Studio (database admin UI)?" "y"
 
 echo ""
+echo -e "${BOLD}━━━ Admin Account (Recommended) ━━━${NC}"
+echo ""
+
+prompt_yn SETUP_ADMIN_NOW "Create the first admin account now?" "y"
+if [ "$SETUP_ADMIN_NOW" = true ]; then
+    prompt ADMIN_EMAIL "Admin email" ""
+    prompt ADMIN_PASSWORD "Admin password" "" true
+fi
+
+echo ""
 echo -e "${BOLD}━━━ Generating Secrets ━━━${NC}"
 echo ""
 
@@ -319,8 +329,13 @@ echo -e "     ${YELLOW}docker compose up -d${NC}"
 echo ""
 echo -e "  2. Wait for services to initialize (~30 seconds)"
 echo ""
+if [ "$SETUP_ADMIN_NOW" = true ]; then
+echo -e "  3. Create your admin user (non-interactive):"
+echo -e "     ${YELLOW}ADMIN_EMAIL=... ADMIN_PASSWORD=... ./scripts/create-admin.sh${NC}"
+else
 echo -e "  3. Create your admin user:"
 echo -e "     ${YELLOW}./scripts/create-admin.sh${NC}"
+fi
 echo ""
 echo -e "  4. Access your site at ${GREEN}$SITE_URL${NC}"
 echo ""
@@ -335,6 +350,14 @@ JWT Secret: $JWT_SECRET
 Anon Key: $ANON_KEY
 Service Role Key: $SERVICE_ROLE_KEY
 EOF
+
+if [ "$SETUP_ADMIN_NOW" = true ]; then
+cat >> .credentials << EOF
+
+Admin Email: $ADMIN_EMAIL
+Admin Password: $ADMIN_PASSWORD
+EOF
+fi
 chmod 600 .credentials
 
 echo -e "${YELLOW}⚠ Credentials saved to .credentials - keep this file secure!${NC}"

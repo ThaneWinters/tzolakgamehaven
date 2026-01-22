@@ -27,16 +27,39 @@ echo ""
 echo -e "${BLUE}━━━ Create Admin User ━━━${NC}"
 echo ""
 
+AUTH_HEALTH_URL="http://localhost:${KONG_HTTP_PORT:-8000}/auth/v1/health"
+
+is_auth_ready() {
+    # GoTrue exposes a health endpoint. We go through Kong since that's what the
+    # host will reach in most deployments.
+    curl -fsS --max-time 2 "$AUTH_HEALTH_URL" >/dev/null 2>&1
+}
+
+wait_for_auth() {
+    local max_seconds=${1:-120}
+    local waited=0
+
+    while [ $waited -lt $max_seconds ]; do
+        if is_auth_ready; then
+            return 0
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+
+    return 1
+}
+
 # ==========================================
 # Step 1: Check and fix DB user passwords
 # ==========================================
 echo -e "${YELLOW}Checking database connectivity...${NC}"
 
-# Check if auth container is healthy
-AUTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' gamehaven-auth 2>/dev/null || echo "unknown")
-
-if [ "$AUTH_STATUS" != "healthy" ]; then
-    echo -e "${YELLOW}Auth service not healthy. Fixing database passwords...${NC}"
+# Prefer a real readiness check over docker health (compose may not define healthchecks)
+if wait_for_auth 30; then
+    echo -e "${GREEN}✓${NC} Auth service is reachable"
+else
+    echo -e "${YELLOW}Auth service not reachable yet. Attempting database password sync...${NC}"
     
     # Wait for postgres to be ready
     # NOTE: supabase/postgres images typically use `supabase_admin` as the DB superuser.
@@ -86,37 +109,29 @@ EOSQL
     
     # Wait for auth to become healthy
     echo -e "${YELLOW}Waiting for services to initialize...${NC}"
-    for i in {1..60}; do
-        AUTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' gamehaven-auth 2>/dev/null || echo "unknown")
-        if [ "$AUTH_STATUS" = "healthy" ]; then
-            echo -e "${GREEN}✓${NC} Auth service is healthy"
-            break
-        fi
-        
-        # Check if container is running at all
-        AUTH_RUNNING=$(docker inspect --format='{{.State.Running}}' gamehaven-auth 2>/dev/null || echo "false")
-        if [ "$AUTH_RUNNING" = "false" ]; then
-            echo "  Auth restarting... ($i/60)"
-        else
-            echo "  Waiting for auth to be ready... ($i/60)"
-        fi
-        sleep 2
-    done
-    
-    if [ "$AUTH_STATUS" != "healthy" ]; then
-        echo -e "${RED}Warning: Auth service may not be fully ready. Continuing anyway...${NC}"
+    if wait_for_auth 120; then
+        echo -e "${GREEN}✓${NC} Auth service is reachable"
+    else
+        echo -e "${RED}Error: Auth service still not reachable at:${NC} ${AUTH_HEALTH_URL}"
+        echo -e "${YELLOW}Tip:${NC} Run: docker logs gamehaven-auth --tail=200"
+        exit 1
     fi
-else
-    echo -e "${GREEN}✓${NC} Auth service is healthy"
 fi
 
 # ==========================================
 # Step 2: Collect admin credentials
 # ==========================================
 echo ""
-read -p "$(echo -e "${BLUE}?${NC} Admin email: ")" ADMIN_EMAIL
-read -sp "$(echo -e "${BLUE}?${NC} Admin password: ")" ADMIN_PASSWORD
-echo ""
+
+# Support non-interactive usage from install.sh
+if [ -z "${ADMIN_EMAIL:-}" ]; then
+    read -p "$(echo -e "${BLUE}?${NC} Admin email: ")" ADMIN_EMAIL
+fi
+
+if [ -z "${ADMIN_PASSWORD:-}" ]; then
+    read -sp "$(echo -e "${BLUE}?${NC} Admin password: ")" ADMIN_PASSWORD
+    echo ""
+fi
 
 # Validate
 if [ -z "$ADMIN_EMAIL" ] || [ -z "$ADMIN_PASSWORD" ]; then
