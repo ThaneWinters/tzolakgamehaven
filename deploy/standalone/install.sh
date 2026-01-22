@@ -420,26 +420,6 @@ for i in {1..60}; do
 done
 
 # ==========================================
-# RUN APPLICATION MIGRATIONS
-# ==========================================
-
-echo ""
-echo -e "${BOLD}━━━ Running Database Migrations ━━━${NC}"
-echo ""
-
-# The 00-init-users.sql runs automatically via docker-entrypoint-initdb.d
-# But we need to ensure application schema is set up
-# Note: migrations in docker-entrypoint-initdb.d only run on first init
-
-echo -e "${CYAN}Applying application schema...${NC}"
-
-# Run the application schema migration manually to ensure it's applied
-# (handles both fresh installs and existing volumes)
-docker exec -i gamehaven-db psql -U supabase_admin -d postgres < ./migrations/01-app-schema.sql 2>/dev/null || true
-
-echo -e "${GREEN}✓${NC} Application schema ready"
-
-# ==========================================
 # WAIT FOR AUTH SERVICE
 # ==========================================
 
@@ -469,6 +449,25 @@ for i in {1..90}; do
     echo "  Waiting for auth... ($i/90)"
     sleep 2
 done
+
+# ==========================================
+# RUN APPLICATION MIGRATIONS
+# ==========================================
+
+echo ""
+echo -e "${BOLD}━━━ Running Database Migrations ━━━${NC}"
+echo ""
+
+# The 00-init-users.sql runs automatically via docker-entrypoint-initdb.d on first init.
+# Apply the app schema AFTER auth is up so the auth schema + JWT roles are present.
+
+echo -e "${CYAN}Applying application schema...${NC}"
+
+# Run the application schema migration manually to ensure it's applied
+# (handles both fresh installs and existing volumes)
+docker exec -i gamehaven-db psql -v ON_ERROR_STOP=1 -U supabase_admin -d postgres < ./migrations/01-app-schema.sql
+
+echo -e "${GREEN}✓${NC} Application schema ready"
 
 # ==========================================
 # CREATE ADMIN USER

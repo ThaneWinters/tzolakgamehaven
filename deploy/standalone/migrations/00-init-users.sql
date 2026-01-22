@@ -40,3 +40,18 @@ BEGIN
   EXECUTE format('ALTER ROLE supabase_storage_admin WITH PASSWORD %L', current_setting('app.settings.postgres_password', true));
 END
 $$;
+
+-- Ensure core API roles exist (used by PostgREST/JWT roles + grants in app schema)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN
+    CREATE ROLE authenticated NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN
+    CREATE ROLE service_role NOLOGIN;
+  END IF;
+END
+$$;
