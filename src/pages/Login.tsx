@@ -19,16 +19,24 @@ const Login = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    // In some self-hosted environments, a stale session can be briefly hydrated from
-    // storage and then cleared by the auth listener, causing a redirect loop
-    // (/admin -> /settings -> /admin ...). Debounce the redirect to avoid acting
-    // on transient auth state.
+    // Prevent redirect loops from stale/expired sessions being hydrated from storage.
+    // The auth listener can briefly set isAuthenticated=true before clearing an
+    // invalid session, causing /admin -> /settings -> /admin flicker.
+    // We debounce AND verify the session is still valid before navigating.
     if (!loading && isAuthenticated) {
-      const t = window.setTimeout(() => {
-        // Re-check after a short delay; if auth state was transient it will have cleared.
-        if (isAuthenticated) navigate("/settings", { replace: true });
-      }, 250);
-      return () => window.clearTimeout(t);
+      const timer = window.setTimeout(async () => {
+        // Re-check: if the user was cleared during the debounce window, abort.
+        try {
+          const { supabase } = await import("@/integrations/backend/client");
+          const { data } = await supabase.auth.getSession();
+          if (data?.session?.user) {
+            navigate("/settings", { replace: true });
+          }
+        } catch {
+          // Session check failed; stay on login page.
+        }
+      }, 300);
+      return () => window.clearTimeout(timer);
     }
   }, [isAuthenticated, loading, navigate]);
 
