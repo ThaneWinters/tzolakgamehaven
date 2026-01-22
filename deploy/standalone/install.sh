@@ -402,9 +402,9 @@ echo -e "${CYAN}Waiting for database to be ready...${NC}"
 
 for i in {1..60}; do
     # Note: pg_isready doesn't require a password inside the container, and
-    # using the postgres superuser here avoids false negatives if supabase_admin
-    # hasn't been created yet.
-    if docker exec gamehaven-db pg_isready -U postgres >/dev/null 2>&1; then
+    # using supabase_admin avoids noisy FATAL logs because the supabase/postgres
+    # image does not include a 'postgres' role.
+    if docker exec gamehaven-db pg_isready -U supabase_admin -d postgres >/dev/null 2>&1; then
         echo -e "${GREEN}✓${NC} Database is ready"
         break
     fi
