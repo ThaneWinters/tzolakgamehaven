@@ -51,8 +51,11 @@ if [ "$AUTH_STATUS" != "healthy" ]; then
     
     # Reset passwords for internal users.
     # NOTE: On some installs/volumes these roles may not exist yet; create them if missing.
-    docker exec -i gamehaven-db psql -v ON_ERROR_STOP=1 -U supabase_admin -d postgres << EOF
-DO $$
+    # Escape single quotes in password for SQL
+    ESCAPED_PW=$(printf '%s' "$POSTGRES_PASSWORD" | sed "s/'/''/g")
+    
+    docker exec -i gamehaven-db psql -v ON_ERROR_STOP=1 -U supabase_admin -d postgres << EOSQL
+DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
     CREATE ROLE supabase_auth_admin WITH LOGIN;
@@ -67,13 +70,13 @@ BEGIN
     CREATE ROLE supabase_storage_admin WITH LOGIN;
   END IF;
 END
-$$;
+\$\$;
 
-ALTER ROLE supabase_auth_admin WITH PASSWORD '${POSTGRES_PASSWORD}';
-ALTER ROLE authenticator WITH PASSWORD '${POSTGRES_PASSWORD}';
-ALTER ROLE supabase_admin WITH PASSWORD '${POSTGRES_PASSWORD}';
-ALTER ROLE supabase_storage_admin WITH PASSWORD '${POSTGRES_PASSWORD}';
-EOF
+ALTER ROLE supabase_auth_admin WITH PASSWORD '${ESCAPED_PW}';
+ALTER ROLE authenticator WITH PASSWORD '${ESCAPED_PW}';
+ALTER ROLE supabase_admin WITH PASSWORD '${ESCAPED_PW}';
+ALTER ROLE supabase_storage_admin WITH PASSWORD '${ESCAPED_PW}';
+EOSQL
     
     echo -e "${GREEN}✓${NC} Database passwords synchronized"
     
