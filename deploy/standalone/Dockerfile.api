@@ -3,13 +3,13 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-RUN npm ci
+# Install dependencies (use npm install since package-lock.json may not exist)
+COPY server/package*.json ./
+RUN npm install
 
 # Copy source and build
-COPY tsconfig.json ./
-COPY src ./src
+COPY server/tsconfig.json ./
+COPY server/src ./src
 RUN npm run build
 
 # Production image
@@ -21,8 +21,8 @@ WORKDIR /app
 RUN apk add --no-cache wget
 
 # Copy built files and production deps
-COPY package*.json ./
-RUN npm ci --only=production
+COPY server/package*.json ./
+RUN npm install --only=production
 
 COPY --from=builder /app/dist ./dist
 
