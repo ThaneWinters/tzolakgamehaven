@@ -1,11 +1,30 @@
+# Game Haven API - Production Build
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy source and build
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+# Production image
 FROM node:20-alpine
 
 WORKDIR /app
 
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
+# Copy built files and production deps
 COPY package*.json ./
 RUN npm ci --only=production
 
-COPY dist ./dist
+COPY --from=builder /app/dist ./dist
 
 ENV NODE_ENV=production
 EXPOSE 3001
