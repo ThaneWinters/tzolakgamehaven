@@ -1,16 +1,26 @@
 // Main router for SELF-HOSTED deployments only
-// In Lovable Cloud, each function is deployed independently and this is just a stub
+// In Lovable Cloud, each function is deployed independently and this file is just a stub
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// For Lovable Cloud: This is a stub. Each function (bgg-lookup, wishlist, etc.) 
-// is deployed independently and accessed directly via /functions/v1/{function-name}
-
-// For Self-Hosted: The Docker container mounts all functions and uses dynamic routing
-// via the edge-runtime's --main-service flag pointing to this file
+// List of available functions for self-hosted routing
+const AVAILABLE_FUNCTIONS = [
+  "bgg-import",
+  "bgg-lookup", 
+  "bulk-import",
+  "condense-descriptions",
+  "decrypt-messages",
+  "game-import",
+  "image-proxy",
+  "manage-users",
+  "rate-game",
+  "send-email",
+  "send-message",
+  "wishlist",
+];
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
@@ -21,20 +31,45 @@ export default async function handler(req: Request): Promise<Response> {
   const pathParts = url.pathname.split("/").filter(Boolean);
   const functionName = pathParts[0];
 
-  // In Cloud deployment, this stub shouldn't receive real traffic
-  // Each function is called directly. This is just for self-hosted routing.
-  return new Response(
-    JSON.stringify({ 
-      message: "This is the self-hosted router stub",
-      note: "In Lovable Cloud, call functions directly at /functions/v1/{function-name}",
-      requestedFunction: functionName || "(none)",
-    }),
-    { 
-      status: 200, 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+  if (!functionName) {
+    return new Response(
+      JSON.stringify({ error: "Function name required", available: AVAILABLE_FUNCTIONS }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!AVAILABLE_FUNCTIONS.includes(functionName)) {
+    return new Response(
+      JSON.stringify({ error: `Unknown function: ${functionName}`, available: AVAILABLE_FUNCTIONS }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  try {
+    // Dynamic import for self-hosted - works in edge-runtime with mounted volume
+    const modulePath = `../${functionName}/index.ts`;
+    const module = await import(modulePath);
+    
+    // Call the default export handler
+    if (typeof module.default === "function") {
+      return await module.default(req);
     }
-  );
+    
+    return new Response(
+      JSON.stringify({ error: `Function ${functionName} has no default export` }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error(`Error loading function ${functionName}:`, error);
+    return new Response(
+      JSON.stringify({ 
+        error: `Failed to load function: ${functionName}`,
+        details: error instanceof Error ? error.message : String(error)
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 }
 
-// For Lovable Cloud deployment
+// For Lovable Cloud deployment (this becomes a standalone stub)
 Deno.serve(handler);
