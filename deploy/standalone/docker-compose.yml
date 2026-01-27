@@ -207,7 +207,11 @@ services:
       - "${KONG_HTTP_PORT:-8000}:8000"
     environment:
       KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      # NOTE: We generate a rendered config at startup because Kong does NOT
+      # reliably expand ${VAR} inside declarative YAML across versions/builds.
+      # Without this, key-auth credentials end up as the literal string
+      # "${SUPABASE_ANON_KEY}" which causes 401 Unauthorized.
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.generated.yml
       KONG_DNS_ORDER: LAST,A,CNAME
       KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
       KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
@@ -216,6 +220,8 @@ services:
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
     volumes:
       - ./kong.yml:/home/kong/kong.yml:ro
+      - ./scripts/kong-render-config.sh:/home/kong/kong-render-config.sh:ro
+    command: ["sh", "-lc", "chmod +x /home/kong/kong-render-config.sh && /home/kong/kong-render-config.sh && exec /docker-entrypoint.sh kong docker-start"]
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 10s
