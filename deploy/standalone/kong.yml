@@ -116,6 +116,7 @@ services:
         strip_path: true
         paths:
           - /functions/v1/
+          - /functions/v1
     plugins:
       - name: cors
       - name: key-auth
