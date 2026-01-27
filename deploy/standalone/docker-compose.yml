@@ -190,8 +190,12 @@ services:
       # Edge Function source lives in repo root at supabase/functions.
       # Mount it explicitly (deploy/standalone/functions does not exist).
       - ../../supabase/functions:/home/deno/functions:ro
+      # Override main/index.ts with self-hosted router (has static imports that work locally)
+      - ./main-router.ts:/home/deno/functions/main/index.ts:ro
     command:
       - start
+      - --main-service
+      - /home/deno/functions/main
       - --port
       - "9000"
     depends_on:
