@@ -73,8 +73,8 @@ type ImportResult = {
 };
 
 // Parse CSV data - handles multi-line quoted fields properly
-function parseCSV(csvData: string): Record<string, string>[] {
-  const rows: string[][] = [];
+function parseCSVRaw(csvData: string): { headers: string[]; rows: Record<string, string>[] } {
+  const parsedRows: string[][] = [];
   let currentRow: string[] = [];
   let currentField = "";
   let inQuotes = false;
@@ -102,7 +102,7 @@ function parseCSV(csvData: string): Record<string, string>[] {
       if (char === '\r') i++;
       currentRow.push(currentField.trim());
       if (currentRow.some(field => field !== "")) {
-        rows.push(currentRow);
+        parsedRows.push(currentRow);
       }
       currentRow = [];
       currentField = "";
@@ -110,7 +110,7 @@ function parseCSV(csvData: string): Record<string, string>[] {
       // Handle standalone \r as line ending
       currentRow.push(currentField.trim());
       if (currentRow.some(field => field !== "")) {
-        rows.push(currentRow);
+        parsedRows.push(currentRow);
       }
       currentRow = [];
       currentField = "";
@@ -123,18 +123,18 @@ function parseCSV(csvData: string): Record<string, string>[] {
   if (currentField || currentRow.length > 0) {
     currentRow.push(currentField.trim());
     if (currentRow.some(field => field !== "")) {
-      rows.push(currentRow);
+      parsedRows.push(currentRow);
     }
   }
   
-  if (rows.length < 2) return [];
+  if (parsedRows.length < 2) return { headers: [], rows: [] };
   
   // First row is headers
-  const headers = rows[0].map(h => h.toLowerCase().trim());
+  const headers = parsedRows[0].map(h => h.toLowerCase().trim());
   
   const result: Record<string, string>[] = [];
-  for (let i = 1; i < rows.length; i++) {
-    const values = rows[i];
+  for (let i = 1; i < parsedRows.length; i++) {
+    const values = parsedRows[i];
     const row: Record<string, string> = {};
     headers.forEach((header, idx) => {
       row[header] = values[idx] || "";
@@ -142,7 +142,102 @@ function parseCSV(csvData: string): Record<string, string>[] {
     result.push(row);
   }
   
-  return result;
+  return { headers, rows: result };
+}
+
+// Check if CSV is a BGG collection export (has objectname, objectid columns)
+function isBGGExportCSV(headers: string[]): boolean {
+  const lowerHeaders = headers.map(h => h.toLowerCase());
+  return lowerHeaders.includes("objectname") && lowerHeaders.includes("objectid");
+}
+
+// Convert BGG weight (1-5 scale) to difficulty enum
+function mapBGGWeightToDifficulty(weight: string): string {
+  const w = parseFloat(weight);
+  if (isNaN(w) || w === 0) return "3 - Medium";
+  if (w < 1.5) return "1 - Light";
+  if (w < 2.5) return "2 - Medium Light";
+  if (w < 3.5) return "3 - Medium";
+  if (w < 4.5) return "4 - Medium Heavy";
+  return "5 - Heavy";
+}
+
+// Convert BGG playing time to play_time enum
+function mapBGGPlayingTime(playingTime: string): string {
+  const t = parseInt(playingTime, 10);
+  if (isNaN(t) || t === 0) return "45-60 Minutes";
+  if (t <= 15) return "0-15 Minutes";
+  if (t <= 30) return "15-30 Minutes";
+  if (t <= 45) return "30-45 Minutes";
+  if (t <= 60) return "45-60 Minutes";
+  if (t <= 120) return "60+ Minutes";
+  if (t <= 180) return "2+ Hours";
+  return "3+ Hours";
+}
+
+// Transform BGG export row to standard format
+function transformBGGExportRow(row: Record<string, string>): Record<string, string> {
+  // Only import games that are "owned" (own=1)
+  if (row.own !== "1") {
+    return {}; // Empty row will be skipped
+  }
+  
+  return {
+    // Title and identifiers
+    title: row.objectname || "",
+    bgg_id: row.objectid || "",
+    bgg_url: row.objectid ? `https://boardgamegeek.com/boardgame/${row.objectid}` : "",
+    
+    // Player counts
+    min_players: row.minplayers || "",
+    max_players: row.maxplayers || "",
+    
+    // Play time (convert from minutes to enum)
+    play_time: mapBGGPlayingTime(row.playingtime || row.maxplaytime || ""),
+    
+    // Difficulty (convert from avgweight 1-5 scale)
+    difficulty: mapBGGWeightToDifficulty(row.avgweight || ""),
+    
+    // Age
+    suggested_age: row.bggrecagerange || "",
+    
+    // Expansion detection
+    is_expansion: row.itemtype === "expansion" ? "true" : "false",
+    
+    // For sale
+    is_for_sale: row.fortrade === "1" ? "true" : "false",
+    
+    // Location info (from invlocation or acquiredfrom)
+    location_misc: row.invlocation || "",
+    
+    // Notes and comments
+    description: row.comment || row.wishlistcomment || "",
+    
+    // Private fields (for admin data if we support it)
+    purchase_price: row.pricepaid || "",
+    purchase_currency: row.pp_currency || "",
+    purchase_date: row.acquisitiondate || "",
+    acquired_from: row.acquiredfrom || "",
+    private_comment: row.privatecomment || "",
+  };
+}
+
+// Parse CSV with automatic format detection
+function parseCSV(csvData: string): Record<string, string>[] {
+  const { headers, rows } = parseCSVRaw(csvData);
+  
+  if (rows.length === 0) return [];
+  
+  // Check if this is a BGG export
+  if (isBGGExportCSV(headers)) {
+    console.log("Detected BGG collection export CSV format");
+    return rows
+      .map(row => transformBGGExportRow(row))
+      .filter(row => row.title); // Filter out empty rows (non-owned games)
+  }
+  
+  // Standard format
+  return rows;
 }
 
 // Lookup BGG data for a game title
