@@ -154,8 +154,8 @@ export function BulkImportDialog({
         
         if (mode === "csv") {
           // Parse CSV properly handling multi-line quoted fields
-          const parseCSV = (data: string): Record<string, string>[] => {
-            const rows: string[][] = [];
+          const parseCSVRaw = (data: string): { headers: string[]; rows: Record<string, string>[] } => {
+            const parsedRows: string[][] = [];
             let currentRow: string[] = [];
             let currentField = "";
             let inQuotes = false;
@@ -180,14 +180,14 @@ export function BulkImportDialog({
                 if (char === '\r') i++;
                 currentRow.push(currentField.trim());
                 if (currentRow.some(field => field !== "")) {
-                  rows.push(currentRow);
+                  parsedRows.push(currentRow);
                 }
                 currentRow = [];
                 currentField = "";
               } else if (char === '\r' && !inQuotes) {
                 currentRow.push(currentField.trim());
                 if (currentRow.some(field => field !== "")) {
-                  rows.push(currentRow);
+                  parsedRows.push(currentRow);
                 }
                 currentRow = [];
                 currentField = "";
@@ -199,17 +199,17 @@ export function BulkImportDialog({
             if (currentField || currentRow.length > 0) {
               currentRow.push(currentField.trim());
               if (currentRow.some(field => field !== "")) {
-                rows.push(currentRow);
+                parsedRows.push(currentRow);
               }
             }
             
-            if (rows.length < 2) return [];
+            if (parsedRows.length < 2) return { headers: [], rows: [] };
             
-            const headers = rows[0].map(h => h.toLowerCase().trim().replace(/\s+/g, '_'));
+            const headers = parsedRows[0].map(h => h.toLowerCase().trim().replace(/\s+/g, '_'));
             const result: Record<string, string>[] = [];
             
-            for (let i = 1; i < rows.length; i++) {
-              const values = rows[i];
+            for (let i = 1; i < parsedRows.length; i++) {
+              const values = parsedRows[i];
               const row: Record<string, string> = {};
               headers.forEach((header, idx) => {
                 row[header] = values[idx] || "";
@@ -217,10 +217,63 @@ export function BulkImportDialog({
               result.push(row);
             }
             
-            return result;
+            return { headers, rows: result };
           };
           
-          const parsedRows = parseCSV(csvData);
+          // Check if CSV is a BGG export
+          const isBGGExport = (headers: string[]): boolean => {
+            return headers.includes("objectname") && headers.includes("objectid");
+          };
+          
+          // Convert BGG weight to difficulty
+          const mapBGGWeightToDifficulty = (weight: string): string => {
+            const w = parseFloat(weight);
+            if (isNaN(w) || w === 0) return "3 - Medium";
+            if (w < 1.5) return "1 - Light";
+            if (w < 2.5) return "2 - Medium Light";
+            if (w < 3.5) return "3 - Medium";
+            if (w < 4.5) return "4 - Medium Heavy";
+            return "5 - Heavy";
+          };
+          
+          // Convert BGG playing time to enum
+          const mapBGGPlayingTime = (playingTime: string): string => {
+            const t = parseInt(playingTime, 10);
+            if (isNaN(t) || t === 0) return "45-60 Minutes";
+            if (t <= 15) return "0-15 Minutes";
+            if (t <= 30) return "15-30 Minutes";
+            if (t <= 45) return "30-45 Minutes";
+            if (t <= 60) return "45-60 Minutes";
+            if (t <= 120) return "60+ Minutes";
+            if (t <= 180) return "2+ Hours";
+            return "3+ Hours";
+          };
+          
+          // Transform BGG export row
+          const transformBGGRow = (row: Record<string, string>): Record<string, string> => {
+            if (row.own !== "1") return {}; // Only import owned games
+            return {
+              title: row.objectname || "",
+              bgg_id: row.objectid || "",
+              bgg_url: row.objectid ? `https://boardgamegeek.com/boardgame/${row.objectid}` : "",
+              min_players: row.minplayers || "",
+              max_players: row.maxplayers || "",
+              play_time: mapBGGPlayingTime(row.playingtime || row.maxplaytime || ""),
+              difficulty: mapBGGWeightToDifficulty(row.avgweight || ""),
+              suggested_age: row.bggrecagerange || "",
+              is_expansion: row.itemtype === "expansion" ? "true" : "false",
+              is_for_sale: row.fortrade === "1" ? "true" : "false",
+              location_misc: row.invlocation || "",
+              description: row.comment || row.wishlistcomment || "",
+            };
+          };
+          
+          const { headers, rows: rawRows } = parseCSVRaw(csvData);
+          
+          // Transform if BGG format
+          const parsedRows = isBGGExport(headers)
+            ? rawRows.map(transformBGGRow).filter(r => r.title)
+            : rawRows;
           
           const parseBool = (val: string | undefined): boolean => {
             if (!val) return false;
@@ -253,8 +306,8 @@ export function BulkImportDialog({
                 game_type: row.type || row.game_type || "Board Game",
                 difficulty: row.difficulty || row.weight || null,
                 play_time: row.play_time || row.playtime || null,
-                min_players: parseNum(row.min_players),
-                max_players: parseNum(row.max_players),
+                min_players: parseNum(row.min_players || row.minplayers),
+                max_players: parseNum(row.max_players || row.maxplayers),
                 suggested_age: row.suggested_age || row.age || null,
                 publisher: row.publisher || null,
                 mechanics: mechanics.length > 0 ? mechanics : undefined,
@@ -438,7 +491,7 @@ export function BulkImportDialog({
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Supports CSV files. File should have columns: title (or name/game), optionally bgg_id, bgg_url
+                    Supports CSV files including <strong>BGG collection exports</strong>. Also accepts custom CSVs with columns: title (or name/game), optionally bgg_id, bgg_url
                   </p>
                 </div>
 
